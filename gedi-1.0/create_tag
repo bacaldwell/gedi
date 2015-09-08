@@ -1,0 +1,20 @@
+#!/bin/sh
+# Create a tag based on the META file.
+
+SVN="https://gedi-tools.svn.sourceforge.net/svnroot/gedi-tools"
+TRUNK="$SVN/trunk/gedi"
+TAGS="$SVN/tags"
+
+name=$(awk '/Name:/ {print $NF}' META)
+version=$(awk '/Version:/ {print $NF}' META)
+release=$(awk '/Release:/ {print $NF}' META)
+tag=$name-$version-$release
+
+if ( ! svn list $TAGS/$tag > /dev/null 2>&1 ) ; then
+   svn mkdir $TAGS/$tag -m ""
+   svn copy $TRUNK $TAGS/$tag/$name -m "release $tag"
+else
+   svn remove $TAGS/$tag -m "changing release"
+   svn mkdir $TAGS/$tag -m ""
+   svn copy $TRUNK $TAGS/$tag/$name -m "release $tag"
+fi

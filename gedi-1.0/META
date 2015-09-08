@@ -1,0 +1,9 @@
+##
+# $Id: META 404 2009-03-26 20:35:16Z makia $
+##
+# Metadata for RPM/TAR makefile targets
+##
+  Meta:         1
+  Name:         gedi
+  Version:      0.5.0
+  Release:      6

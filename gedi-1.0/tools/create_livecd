@@ -1,0 +1,145 @@
+#!/bin/sh
+################################################################################
+# $Id: create_livecd 352 2006-08-09 18:33:17Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Using a previously built image, create a dvd of the image to use as a livecd.
+
+# Source function library.
+. /etc/gedi/variables
+
+umask 133
+
+ISO_OPTIONS="-J -R -v -dir-mode 0755 -uid 0 -gid 0 -no-emul-boot \
+             -c isolinux/boot.cat -b isolinux/isolinux.bin \
+             -boot-load-size 4 -boot-info-table -hide-rr-moved"
+
+OUTPUT="/tmp"
+
+usage()
+{
+   echo "USAGE: $0 [OPTION]... <nodetype>"
+   echo ""
+   echo "Options:"
+   echo "      -t TITLE   Title for the iso"
+   echo "      -o DIR     Output directory (default: $OUTPUT)"
+   echo "      -h         This help information"
+   echo ""
+   echo "<nodetype> must be supplied and exist in ${IMAGE}"
+}
+
+while getopts t:o:h opt ; do
+   case "$opt" in
+      t) TITLE="${OPTARG}" ;;
+      o)
+         OUTPUT="${OPTARG}"
+         if [ ! -d "${OUTPUT}" ] ; then
+            echo "ERROR -- ${OUTPUT} does not exist."
+            exit
+         fi
+         ;;
+      *)
+         usage
+         exit
+         ;;
+   esac
+done
+shift $(($OPTIND-1))
+
+if [ -d "$1" ] ; then
+   type=$(basename $1)
+   image=$1
+elif [ -d "${IMAGE}/${1}" ] ; then
+   type=$1
+   image="${IMAGE}/${1}"
+else
+   echo "ERROR -- $1 does not exist."
+   usage
+   exit
+fi
+
+[ -z "$type" ] && usage && exit
+
+[ -z "$TITLE" ] && TITLE="GeDI LiveCD for $type"
+
+DVDBUILD=$type-dvd.$$
+DVDBUILDDIR=${OUTPUT}/${DVDBUILD}
+[ -f /tmp/$type-dvd.iso ] && rm -f ${OUTPUT}/$type-dvd.iso
+
+echo "Creating ${DVDBUILDDIR}"
+[ ! -d ${DVDBUILDDIR} ] && mkdir ${DVDBUILDDIR}
+mkdir ${DVDBUILDDIR}/isolinux
+mkdir ${DVDBUILDDIR}/image
+
+echo "* copying ${image}"
+rsync -arz ${image}/ ${DVDBUILDDIR}/image/
+echo "* copying kernel and ramdisk"
+cp ${KERNDIR}/initrd_gedi-${type}.gz ${DVDBUILDDIR}/isolinux/initrd.gz
+cp ${KERNDIR}/vmlinuz-${type} ${DVDBUILDDIR}/isolinux/vmlinuz
+cp ${LIBDIR}/livecd/isolinux.bin ${DVDBUILDDIR}/isolinux/
+
+
+echo "* creating an isolinux.cfg file"
+append_line=$(echo "${BOOT_OPTIONS}" | sed "s,kernel/initrd.*gz ,initrd.gz ,")
+cat <<__END__ >> ${DVDBUILDDIR}/isolinux/isolinux.cfg
+prompt 1
+timeout 50
+display boot.msg
+
+default gedi
+
+label gedi
+	kernel vmlinuz
+	append ${append_line} console=tty0
+
+label hd
+	localboot 0x80
+label quit
+	localboot -1
+__END__
+
+echo "* creating a boot.msg file"
+cat <<__END__ >> ${DVDBUILDDIR}/isolinux/boot.msg
+
+Welcome to 0fThe Live GeDI CD-ROM07
+
+- 0fgedi07   : $TITLE. <default>
+- 0fhd07     : Boot the Hard Drive
+- 0fquit07   : Quit
+__END__
+
+[ -f ${TOOLSDIR}/livecd.local ] &&
+   ${TOOLSDIR}/livecd.local ${DVDBUILDDIR}/image
+
+echo "* creating the iso"
+pushd ${OUTPUT} > /dev/null
+mkisofs -A "${TITLE}" -V "${TITLE}" $ISO_OPTIONS -quiet \
+        -o ${OUTPUT}/$type-dvd.iso ${DVDBUILD}
+popd > /dev/null
+echo "* iso written to ${OUTPUT}/$type-dvd.iso"
+
+echo "* cleaning up"
+rm -rf ${DVDBUILDDIR}
+echo "done"

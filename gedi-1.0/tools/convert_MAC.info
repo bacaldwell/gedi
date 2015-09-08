@@ -1,0 +1,136 @@
+#!/bin/sh
+################################################################################
+# $Id: convert_MAC.info 72 2006-02-14 01:55:36Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Convert between YACI and GeDI's MAC.info file.
+
+# Source function library.
+. /etc/gedi/variables
+
+YACI_INFO=/tftpboot/etc/MAC.info
+
+usage()
+{
+   echo "USAGE: $0 [OPTION] [FILE]"
+   echo ""
+   echo "Options:"
+   echo "      -y          Convert the MAC.info file for YACI."
+   echo "      -g          Convert the MAC.info file for GeDI. (default)"
+   echo "      -d          Don't write files out, just print what will happen"
+   echo "      -h          Print out this help statement."
+   echo ""
+   echo "If FILE is not supplied, then $YACI_INFO is used by default."
+}
+
+while getopts ygdh opt ; do
+   case "$opt" in
+      y) yaci=1 ;;
+      g) gedi=1 ;;
+      d) debug=1 ;;
+      h) usage ; exit 0 ;;
+   esac
+done
+
+shift $(($OPTIND-1))
+
+if [ -n "$1" ] && [ -f "$1" ] ; then
+   YACI_INFO=$1
+fi
+
+if [ "$yaci" != 1 ] ; then
+   gedi=1
+fi
+
+GEDI_HEADER="# MAC.info file (converted from YACI)
+#
+# MAC_ADDRESS		HOSTNAME	IP_ADDRESS	IMAGE
+# or
+# IP_ADDRESS_RANGE		IMAGE"
+
+YACI_HEADER="# MAC.info file (converted from GeDI)
+#
+# HOSTNAME	MAC_ADDRESS		IMAGE"
+
+if [ "$gedi" = 1 ] ; then
+   if [ ! -f "$YACI_INFO" ] ; then
+      echo "Could not find YACI's MAC.info file."
+      exit
+   fi
+
+   echo "Converting YACI's MAC.info file to the GeDI format."
+
+   if [ "${debug}" = 1 ] ; then
+      echo "${GEDI_HEADER}"
+   else
+      echo "${GEDI_HEADER}" > $MACINFO
+   fi
+
+   cat ${YACI_INFO} |
+   while read info ; do
+      [ -z "$info" ] && continue
+      ( echo ${info} | grep -q '^#' ) && continue
+
+      line=( $(echo ${info} | awk '{print $1" "$2" "$3}') )
+      if ( grep -q "[[:space:]]e${line[0]}[[:space:]]" ${HOSTS} ) ; then
+         ip=$( grep "[[:space:]]e${line[0]}[[:space:]]" ${HOSTS} | awk '{print $1}' )
+      else
+         ip=$( grep "[[:space:]]${line[0]}[[:space:]]" ${HOSTS} | awk '{print $1}' )
+      fi
+      [ -z "$ip" ] && continue
+
+      if [ "${debug}" = 1 ] ; then
+         echo $( echo ${line[1]} | tr '[:upper:]' '[:lower:]' )"	${line[0]}		${ip}	${line[2]}"
+      else
+         echo $( echo ${line[1]} | tr '[:upper:]' '[:lower:]' )"	${line[0]}		${ip}	${line[2]}" >> $MACINFO
+      fi
+   done
+else
+   if [ ! -f "$MACINFO" ] ; then
+      echo "Could not find GeDI's MAC.info file."
+      exit
+   fi
+
+   echo "Converting GeDI's MAC.info file to the YACI format."
+
+   if [ "${debug}" = 1 ] ; then
+      echo "${YACI_HEADER}"
+   else
+      echo "${YACI_HEADER}" > $YACI_INFO
+   fi
+
+   cat ${MACINFO} |
+   while read info ; do
+      ( echo ${info} | grep -q '^#' ) && continue
+
+      line=( $(echo ${info} | awk '{print $2" "$1" "$4}') )
+
+      if [ "${debug}" = 1 ] ; then
+         echo "${line[0]}		"$( echo ${line[1]} | tr '[:upper:]' '[:lower:]' )"	${line[2]}"
+      else
+         echo "${line[0]}		"$( echo ${line[1]} | tr '[:upper:]' '[:lower:]' )"	${line[2]}" >> $YACI_INFO
+      fi
+   done
+fi

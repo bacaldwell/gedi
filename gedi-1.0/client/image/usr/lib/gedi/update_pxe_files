@@ -1,0 +1,190 @@
+#!/bin/sh
+################################################################################
+# $Id: update_pxe_files 158 2006-05-01 19:58:06Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+
+# Source function library.
+. /etc/sysconfig/gedi
+
+usage()
+{
+   echo "USAGE: $0 [OPTION]..."
+   echo ""
+   echo "Options:"
+   echo "      -d          Change the default kernel."
+   echo "      -h          Print out this help statement."
+   echo ""
+}
+
+while getopts hd opt ; do
+   case "$opt" in
+      d) def_change=1 ;;
+      h) usage ; exit 0 ;;
+   esac
+done
+
+if [ ! -d $(dirname $PXEFILE) ] ; then
+   mkdir $(dirname $PXEFILE)
+fi
+
+if [ ! -f "${PXEFILE}" ] ; then
+   echo "* Creating new PXE file"
+   MSG=$(echo $MSGFILE | sed "s,^${BOOTDIR}/,,")
+   cat <<__END__ > $PXEFILE
+PROMPT 1
+TIMEOUT 20
+IPAPPEND 2
+DISPLAY ${MSG}
+DEFAULT #DEFAULT#
+__END__
+fi
+
+if [ -n "$SERIAL" ] && ( ! grep -q SERIAL ${PXEFILE} ) ; then
+   echo "Adding serial option to ${PXEFILE}"
+   echo "SERIAL 0 $SERIAL" > ${PXEFILE}.tmp
+   cat ${PXEFILE} >> ${PXEFILE}.tmp
+   mv ${PXEFILE}.tmp ${PXEFILE}
+elif [ -z "$SERIAL" ] && ( grep -q SERIAL ${PXEFILE} ) ; then
+   echo "Removing serial option from ${PXEFILE}"
+   sed -i -e "/^SERIAL.*$/d" ${PXEFILE}
+fi
+
+if [ ! -f "${MSGFILE}" ] ; then
+   echo "* Creating boot message file"
+   cat <<__END__ > ${MSGFILE}
+
+
+09Welcome to 0cGeDI0907
+0a
+
+The following kernels are available:
+07
+
+__END__
+fi
+
+# Removing non-existing entries
+for label in $(awk '/label/ {print $2}' ${PXEFILE}) ; do
+   if [ ! -f "${BOOTDIR}/initrd-${label}-gedi" ] ; then
+      if ( grep -q "label[[:space:]]${label}" ${PXEFILE} ) ; then
+         echo "* Removing ${label} from PXE file"
+         sed -i -e "1,/^./{
+                  /./!d
+                  }
+                  :x
+                  /./!{
+                     N
+                     s/^\n$//
+                     tx
+                  }
+                  :top
+                  /label[[:space:]]$label\n.*APPEND.*/{
+                     d
+                     t top
+                  }
+                  /label[[:space:]]$label/{
+                     N
+                     b top
+                  }" ${PXEFILE}
+      fi
+
+      if ( grep -q "^\(0d\)\?${label}" ${MSGFILE} ) ; then
+         echo "* Removing ${label} from MSG file"
+         sed -i -e "/^\(0d\)\?$label\( (Def.*\)\?/d" ${MSGFILE}
+      fi
+   fi
+done
+
+# Adding New Entries
+for kernel in ${BOOTDIR}/vmlinuz* ; do
+   if [ -h "$kernel" ] ; then
+      real_kernel=$(readlink $kernel)
+      default_kernel=${real_kernel/vmlinuz-/}
+   else
+      kernel=$(basename $kernel)
+      kernel_vers=${kernel/vmlinuz-/}
+      if [ -f "${BOOTDIR}/initrd-${kernel_vers}-gedi" ] ; then
+         if ( ! grep -q "label[[:space:]]${kernel_vers}" ${PXEFILE} ) ; then
+            echo "* Adding $kernel_vers to PXE file"
+            ENTRY=$(cat <<__END__
+
+label ${kernel_vers}
+   kernel $kernel
+   APPEND initrd=initrd-${kernel_vers}-gedi ${BOOT_OPTIONS}
+__END__)
+            echo "${ENTRY}" >> $PXEFILE
+         else
+            aline=$(grep "initrd-${kernel_vers}-gedi" ${PXEFILE} | \
+                       sed 's/^\s\+//')
+            actual_aline="APPEND initrd=initrd-${kernel_vers}-gedi ${BOOT_OPTIONS}"
+            if [ "$aline" != "$actual_aline" ] ; then
+               echo "* Rewriting append line for ${kernel_vers}"
+               sed -i -e "s%.*initrd-${kernel_vers}-gedi.*%   ${actual_aline}%" ${PXEFILE}
+            fi
+         fi
+
+         if ( ! grep -q "^\(0d\)\?${kernel_vers}" ${MSGFILE} ) ; then
+            echo "* Adding $kernel_vers to MSG file"
+            echo "$kernel_vers" >> ${MSGFILE}
+         fi
+      else
+         echo "* No ramdisk available for $kernel_vers"
+      fi
+      avail_kerns=( ${avail_kerns[*]} $kernel_vers )
+   fi
+done
+
+# Changing the default kernel.
+if [ -z "$default_kernel" ] || [ "$def_change" = 1 ] ; then
+   if [ ${#avail_kerns[*]} -eq "1" ] ; then
+      default_kernel=${avail_kerns[0]}
+   else
+      # If the vmlinuz link doesn't exist, we'll prompt for a choice.
+      echo "Which kernel would you like to default to?"
+      PS3="YOUR CHOICE ==> "
+      select default_kernel in ${avail_kerns[*]} ; do
+         [ -n "$default_kernel" ] && break
+      done
+   fi
+fi
+
+# Write the new default to the boot.msg file.
+if [ -n "$default_kernel" ] ; then
+   if [ -f "${BOOTDIR}/initrd-${default_kernel}-gedi" ] ; then
+      if [ "$default_kernel" != \
+        "$(awk '/DEFAULT/ {print $2}' ${PXEFILE})" ] ; then
+         echo "* Changing default kernel to ${default_kernel} in ${PXEFILE}"
+         sed -i "s/DEFAULT.*/DEFAULT $default_kernel/" ${PXEFILE}
+      fi
+      if [ "$default_kernel" != \
+        "$(grep Default ${MSGFILE} | sed "s/0d\(.*\) (Def.*/\1/")" ] ; then
+         echo "* Changing default kernel to ${default_kernel} in ${MSGFILE}"
+         sed -i "s/^0d\(.*\) (Default.*/\1/" ${MSGFILE}
+         sed -i "s/^$default_kernel$/0d$default_kernel (Default)07/" \
+            ${MSGFILE}
+      fi
+   fi
+   ln -sf vmlinuz-$default_kernel /boot/vmlinuz
+fi

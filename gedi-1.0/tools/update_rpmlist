@@ -1,0 +1,188 @@
+#!/usr/bin/perl
+
+################################################################################
+# $Id: update_rpmlist 374 2006-12-15 20:01:27Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Compare rpms in the list to what is available, update as needed.
+
+foreach (`. /etc/gedi/variables; set`)
+{
+   chomp;
+   next unless /^(.*?)=(.*)$/ and $1 ne "SHELLOPTS" ;
+   $ENV{$1} = $2;
+}
+
+$ETCDIR=$ENV{"ETCDIR"};
+$RPMDIR=$ENV{"RPMDIR"};
+$PERLDIR=$ENV{"PERLDIR"};
+
+use Getopt::Std;
+use File::Basename;
+
+use constant GETOPTS_ARGS => "dr:coh";
+use vars map { '$opt_' . $_ } split(/:*/, GETOPTS_ARGS);
+require "$PERLDIR/rpmperl.pm";
+
+($prog = $0) =~ s/.*\/(.*?)$/$1/;
+
+my $usage = <<__END__;
+Usage: $prog [OPTIONS] <rpmlist>
+
+Options:
+  -r DIR   Set the RPM Repository. (Default is $RPMDIR)
+  -c       Remove missing rpms from the list.
+  -o       Use the older version from the repository.
+  rpmlist  List of rpms to be installed in the image.
+__END__
+
+getopts(GETOPTS_ARGS);
+
+($opt_h) && usage();
+
+if ( $#ARGV < 0 ) { usage(); }
+else { $OPT=$ARGV[0]; }
+
+$debug = 1 if $opt_d;
+$clean = 1 if $opt_c;
+$older = 1 if $opt_o;
+
+if ( -f "$OPT" ) { $RPMLIST=$OPT; }
+elsif ( -f "$ETCDIR/$OPT" ) { $RPMLIST="$ETCDIR/$OPT"; }
+else { usage(); }
+
+if ($opt_r)
+{
+   $RPMDIR = $opt_r;
+   usage() unless -d $RPMDIR;
+}
+
+($tmpout = $OPT) =~ s!^.*/!!;
+
+open (RLIST, "$RPMLIST") or die "Cannot open $RPMLIST.\n";
+chomp(@RLIST = <RLIST>);
+close RLIST;
+
+opendir(RPMDIR, "$RPMDIR") or die "Cannot opendir $RPMDIR.\n";
+foreach ( readdir(RPMDIR) )
+{
+   next unless /\.rpm$/;
+   push(@rpms_available, $_);
+}
+closedir(RPMDIR);
+
+foreach $rpm ( @RLIST )
+{
+   print "====================\n" if $debug;
+   print "Working on $rpm\n" if $debug;
+
+   if ( $older == 1 )
+   { $rpm_latest = (rpmperl::rpm_matches($rpm, @rpms_available))[0]; }
+   else
+   { $rpm_latest = rpmperl::latest_version($rpm, @rpms_available); }
+
+   print "Latest version is $rpm_latest\n" if $debug;
+
+   if ( $rpm_latest != -1 )
+   {
+      ($lname, $lvers) = rpmperl::split_name($rpm_latest);
+      ($name, $vers)   = rpmperl::split_name($rpm);
+      if ( "$lname-$lvers" eq "$name-$vers" )
+      { push(@exists, "$rpm"); }
+      else
+      {
+         print "Upgrade: $rpm_latest\n" if $debug;
+         foreach $req ( rpmperl::required($rpm_latest) )
+         { push(@required, basename(rpmperl::latest_version($req, @rpms_available))); }
+         $rpm = basename($rpm_latest);
+         push(@upgrade, $rpm);
+      }
+      print "Writing $rpm to file\n" if $debug;
+      $new_list{$name} = $rpm;
+   }
+   else
+   {
+      $rpm =~ s/\\\+/\+/g;
+      ($name, $vers)   = rpmperl::split_name($rpm);
+      print "Missing (not available in $RPMDIR) $rpm\n" if $debug;
+      push(@missing, "$rpm");
+      $new_list{$name} = $rpm unless $clean == 1;
+   }
+}
+
+while ( @required )
+{
+   $rpm = pop(@required);
+   $rpm =~ s/\+/\\+/g;
+   next if grep (/$rpm/, @required);
+
+   ($name, $version) = rpmperl::split_name($rpm);
+   next if grep (/$name-$version/, @new_list);
+
+   print "Unmet requirement: $rpm\n" if $debug;
+   $rpm =~ s/\\+/+/g;
+   push(@new, "$rpm");
+   $new_list{$name} = $rpm;
+}
+
+open (TMP, ">/tmp/$tmpout.new") or die "Cannot write to /tmp/$OPT.new.\n";
+foreach ( sort keys %new_list )
+{ print TMP $new_list{$_} . "\n"; }
+close(TMP);
+
+if (-f "/tmp/$tmpout.new")
+{
+   $original = $RPMLIST;
+   $new = "/tmp/$tmpout.new";
+
+   if ( ! `cmp -s $original $new` ) { system("mv $new $original"); }
+   else { unlink "$new"; }
+}
+
+# Print out the statistics.
+print "----------------- (STATISTICS) -----------------\n";
+print $#exists+1 . " packages were already up-to-date.\n";
+print $#upgrade+1 . " packages were changed.\n";
+print $#missing+1 . " packages are missing.\n";
+print $#new+1 . " packages are added due to requirements.\n";
+
+print "\n";
+
+if ($#missing >= 0)
+{
+   if ( $clean == 1 )
+   { print "The following have been removed from $RPMLIST:\n"; }
+   else
+   { print "Please add the following RPMS to $RPMDIR:\n"; }
+   foreach (@missing) { print "* $_\n" if $_; }
+}
+
+if ($#new >= 0)
+{
+   print "The following RPMS have been added to meet requirements:\n";
+   foreach (@new) { print "* $_\n" if $_; }
+}
+
+sub usage { print $usage; exit 1; }

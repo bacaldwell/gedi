@@ -1,0 +1,716 @@
+2007-10-23 makia
+	* Added tag=LOCAL to Makefile in case of non-networked systems that
+	  would still like to build.
+
+2007-10-22 makia
+	* Fixed subversion line (Thanks Craig).
+
+2007-10-19 makia
+	* Added fscache to mkinitrd_gedi
+	* Fixed gedi_libs.sh to search for 0680 as well as 0200
+
+2007-10-04 makia
+	* Updated pxelinux.0
+	* Added mount.nfs and mount.nfs4 to the mkinitrd_gedi script (FC7)
+	* Changed 80m limit in tmpfs to 120m (FC7 seemed to have >80m in /etc)
+
+2007-03-14 makia
+	* Added options to update_pxe_files to allow to change the default
+	  kerenl
+	* Modified create_ramdisk to use new select_kernel script
+	* Created select_kernel script to allow for easier changing of the
+	  default kernel.
+	* Changed unionfs.spec to create /unionfs/{writeable,readonly}
+	* Modified linuxrc to use /uniontfs/{writeable,readonly}
+
+2007-03-13 makia
+	* Added SELinux stuff to the document.
+
+2007-02-28 makia
+	* Fixed bug in update_pxe_files so that sed used "%" instead of ","
+	  to delimit ("," can be in the boot options)
+	* Fixed gedi_libs to check eth instead of etc
+	* Fixed gedi_libs so that ethdevs gets set to an array instead of a
+	  string.
+	* Fixed gedi_libs on line 123 to use gedi_mac2eth instead of eth2mac
+	* Fixed gedi_libs to use "local -a" to properly create the ethdevs var
+
+2006-12-18 makia
+	* Changed the local_mods example to just rsync /root
+	* Fixed rpmdiff to use the same comparison routine for both passes
+	* Added -h to rpmdiff
+	* More fixes to rpmdiff to help it better behave.
+	* Tagged as gedi-0.5.0-5
+
+2006-12-15 makia
+	* Made changes to update_rpmlist to use the -o option
+	* Fixed update_rpmlist to use a hash for new_list (this helps fix
+	  duplicates).
+	* Fixed rpmperl.pm to better handle not finding a match
+	* Fixed create_nfsroot to be ok if * is missing from RPM name in
+	  the RPMLIST
+	* Changed gedi_libs.sh to focus on ipconf_rpath in getipconf.
+	* Added BOOTDIR to variables file and create_variables script.
+	* Fixed rpmperl.pm's latest_version to reflect changes to rpm_matches.
+	* Added output to config_services to mention no modification to
+	  exports and the hosts file with range usage.
+	* Modified config_services to strip pool= when attempting to verify
+	  ranges.
+	* Fixed update_pxe_files to properly set the default kernel.
+	* Changed -ie to -i -e in modify_dhcp (-ie means create a new suffix)
+	* Fixed unionfs-1.1.5-patch to properly build with RH kernel.
+	* Removed older versions of unionfs.
+
+2006-12-11 makia
+	* Changed mkdir line in Makefile to separate the directories to make
+	  due to issue in ubuntu edgy
+	* Some text changes to the documentation.
+
+2006-08-11 makia
+	* Moved pxelinux.0 to client image (/boot) and added /boot/pxe to the
+	  client rpm.
+	* Fixed modify_dhcp to create a dhcp to match where the files are now
+	  located.
+	* Fixed update_pxe_files to pay attention to new file locations.
+
+2006-08-10 makia
+	* Changed unionfs.spec file to not make noarch rpms.
+	* Set release as kernel version.
+	* unionfs now requires associated kernel version.
+	* Added unionfs-1.1.5 (and patch against FC5 kernel).
+	* Client variable file now /etc/sysconfig/gedi.conf.
+	* Changed gedi.spec to move client files into better places.
+
+2006-08-09 makia
+	* Modified linuxrc to have a cleaner swap over for unionfs (taken from
+	  garlick).
+
+2006-07-25 makia
+	* Created lib directory and gedi_lib.sh (idea from garlick)
+	* Moved support libraries from tools directory to lib directory.
+	* Updated tools scripts to use new lib directory
+	* Added lib directory to spec file
+	* Moved livecd support files to lib directory
+
+2006-06-28 makia
+	* Move documentation to doc directory (took garlick's Makefile)
+	* Changed spec file to handle new doc directory.
+
+2006-06-14 makia
+	* Fixed update_pxe_files to change kernel command line if variable
+	  changes.
+
+2006-06-13 makia
+	* Updated the gedi document to make it closer to reality.
+	* Fixed config_services and modify_dhcp to actually restart dhcpd as
+	  well as be a little more robust in handling changes.
+	* Added serial options to be put into gedi_pxe.
+	* Tagged as gedi-0.5.0-3
+	* Fixed the modinfo line in mkinitrd_gedi to properly find module
+	  dependencies.
+	* Tagged as gedi-0.5.0-4
+
+2006-06-12 makia
+	* Added a little more robustness to the update_pxe_files script.
+	* Added a -d option to mkinitrd_gedi to force that kernel to be default.
+
+2006-06-09 makia
+	* Fixes to mkinitrd_gedi and init to work with FC5.
+	* Moved linuxrc to client rpm.
+	* Moved booting files from /boot/grub to /boot/pxe.
+	* Moved rc.readonly and readonly-root to client rpm.
+	* Added options to mkinitrd_gedi and create_ramdisk
+
+2006-06-07 makia
+	* Moved functionfs from rc.readonly back into linuxrc
+	* Make linuxrc recursive; first pass is to make things writeable,
+	  second pass is to write to files.
+	* Fixed init and linuxrc to properly pass command line to init.
+	* Fixed linuxrc for ram based fs, couldn't create /unionfs/writeable
+	* Now linuxrc will separately mount /etc, /var and /dev (setting smaller
+	  limits for /etc and /dev).
+	* Tagged as gedi-0.5.0-2
+	* Removed requirement for kernel-source on client.
+	* Fixed modify_dhcp to point to correct boot directory
+	* Added umask to create_variable script
+	* Added check to create /unionfs in image if needed (mkinitrd_gedi)
+	* Removed echo_failure from update_pxe_files script
+	* Removed tr and seq from mkinitrd_gedi; rewrote init to not need them.
+	* Changed files to not use pcitable and instead use modules.pcimap
+
+2006-06-06 makia
+	* removed the image line from gedi_pxe
+	* Fixed mkinitrd_gedi and init to hardcode the mount image based on
+	  variables files.
+
+2006-06-05 makia
+	* Finalized the changes to mkinitrd_gedi and the init scripts, they
+	  now do nothing more than create a ramdisk that initializes the network
+	  and mounts the root fs.
+	* linuxrc will now choose between bind mounting writeable ramfs or
+	  mounting unionfs.
+	* fixed mounting so that df returns a pretty output.
+	* Changed boot.msg to something a little prettier.
+	* Added linuxrc to the spec file.
+	* Tagged as gedi-0.5.0-1
+
+2006-05-26 makia
+	* Removed kernel directory to place everything in image's boot directory
+	* KERNDIR variable removed
+	* nic options are now handled by modprobe.conf in image
+	* install_kernel script is gone
+	* install_initrd moved into nfsroot and changed to mkinitrd_gedi
+	* created a client rpm to install mkinitrd_gedi, variables into the
+	  image
+	* moved unionfs and patches into client rpm
+	* moved linuxrc file out of script and renamed it to init
+	* now using cpio instead of losetup to create ramdisk
+	* pxelinux files now point into the image
+	* Created update_pxe_files to replace modify_pxe
+	* Minor changes to use of sed (replace sed-n-move to sed -i)
+	* Changes to config_services to use new dhcp stuff
+	* Tagged as gedi-0.4.4-1
+	* Missed changing the target in mkinitrd_gedi to add -gedi to ramdisk
+	* Created create_ramdisk script to automatically create ramdisks as
+	  needed.
+	* Tagged as gedi-0.4.4-2
+	* More changes, should never try to move scripts...
+	* Tagged as gedi-0.4.4-3
+
+2006-05-23 makia
+	* Added coreutils to setup list in create_nfsroot
+
+2006-05-18 makia
+	* Changed mount line in install_initrd to use NFS_SERVER variable.
+	* Changed NFS_SERVER variable to use awk instead of "grep and awk"
+
+2006-05-15 makia
+	* Fix to create_livecd
+	* More changes to rpmperl.pm to fix rpmdiff
+	* Tagged as gedi-0.4.3-4
+
+2006-05-11 makia
+	* Minor changes to the make scripts.
+	* Tagged as gedi-0-4-3-2
+
+2006-05-01 makia
+	* Added in changes from Trent.
+
+2006-04-13 makia
+	* Fixed rpmdiff to have it default to have the image match what is in
+	  the rpmlist.
+	* Added an image setting to the local.conf file and modified the copy
+	  script.  The copy_local_files script will only pay attention if there
+	  happens to be six columns.
+	* Slight change to the error message when building unionfs.
+	* Fixed the Makefile to pay attention to tags and whatnot.
+	* Updated unionfs to 1.1.4 (along with patch) and placed it along side
+	  for testing.
+	* Tagged as gedi-0-4-3-1
+
+2006-04-11 makia
+	* Removed the Make-rpm.mk and fixed the Makefile to create rpms.
+	* TODO: Fix the makefile to pay attention to actual tags (rather than
+	  arbitrarily grabbing what is in the META file.
+	* Tagged as gedi-0-4-2-5
+	* Fixed the unionfs patch to apply slightly cleaner.
+	* Added gedi.txt
+
+2006-04-10 makia
+	* Added check for nash or losetup in install_initrd
+	* Cleaned up some output for install_initrd
+	* Changed install_initrd to only copy the specified kernel and to better
+	  check for existance of old files
+	* Moved to subversion
+
+2006-04-06 makia
+	* Added new variable (MOUNT_OPTIONS) to allow passing options to
+	  install_initrd for NFS mount command.
+
+2006-03-29 makia
+	* Fixed install_initrd's rename_nic to actually do the right thing.
+
+2006-03-15 makia
+	* Upgraded unionfs to 1.1.3
+
+2006-02-28 makia
+	* Finally updated the tex file with more useful documentation.
+	* Cleaned up a few of the scripts.
+	* Found that the tex proccess create the pdf wasn't creating the TOC
+	  correctly, so  I now have it take a second pass.
+	* Tagged as gedi-0-4-2-3
+
+2006-02-27 makia
+	* Created new patches to fix shutdown issues.
+	* Added installation of cd-rom related modules in the ramdisk.
+	* Changed rpmdiff to allow for node-type as input.
+
+2006-02-23 makia
+	* Adding variables to pass options to modules loaded in initrd.
+	* Minor fix to rpmdiff.
+	* Added an rm of the images K90network link to aid in a better
+	  time during shutdown/reboot.
+	* Changed rc.readonly to better handle the host_pre variable
+	  as well as better handle setting the hostname.
+	* Change configure to do the proper mapping of #HOSTPRE#
+
+2006-02-13 makia
+	* Fixed rpmdiff and update_rpmdir to do the right things.
+	* rpmdiff will now (using -g) make the changes to the list and the
+	  image to make things match.
+	* Tagged as gedi-0-4-2-1 because it's about time these scripts were
+	  done.
+
+2006-02-10 makia
+	* Created update_exclude to provide a way to hold certain RPMs back
+
+2006-02-09 makia
+	* Fixed typo in install_kernel.
+	* Created the LiveCD script.
+	* Added changes to the install_initrd script to recognize if booting
+	  from cd or network.
+
+2006-02-08 makia
+	* Made a few minor changes in the create_nfsroot script to handle
+	  multiple architectures.
+	* TODO: Fix rpmdiff to support multi-arch
+	* TODO: Fix update-rpmdir to use the new vercmp
+	* Made a few fixes to work on x86_64 (needed /lib64 in the initrd)
+	* Added hack for forcedeth on Tyan S2895.
+	* Removed /var/log from fstab
+
+2006-02-06 makia
+	* Fixed typos in install_kernel script to print out a better error on
+	  existance of kernel and ramdisk.
+	* Started working on fix to update-rpmdir
+	* Created a better mathing routine for the grep in rpmperl.
+
+2006-02-03 makia
+	* Changed the perl module to do a few more functions.
+	* Fixed update_rpmlist to use the new functions in rpmperl.pm.
+	* TODO: Fix update-rpmdir to use the new vercmp
+	* Tagged as gedi-0-4-1-11
+
+2006-01-30 makia
+	* Moved vercmp to rpmperl.pm
+	* Created "required" routine in rpmperl.pm to check what modules are
+	  required to satisfy a given rpm.
+	* Worked on update_rpmplist to use new required routine (only acts on
+	  RPMs added by the script itself).
+
+2006-01-26 makia
+	* Added vercmp to fix version comparison issues with support perl
+	  scripts.
+	* Added variables to variables files to use the RPM perl modules.
+	* Fixed update-rpmlist to use the new vercmp.
+	* Minor changes to the rc.readonly script.
+	* TODO: Fix update-rpmdir to use the new vercmp
+
+2006-01-11 makia
+	* Minor changes to a few scripts.
+	* update_rpmlist now handles leaving out the * at the end of an rpmname.
+	* Started on fixes for documentation.
+	* Tagged as gedi-0-4-1-10
+
+2006-01-10 makia
+	* Changed a few prettiness typos.
+	* Tagged as gedi-0-4-1-9
+
+2006-01-03 makia
+	* Found an issue in the ramdisk that / was being set as 1777; fixed
+	  by adding "chmod 755 /writeable" to install_initrd.
+
+2005-12-20 makia
+	* Fixed typo in modify_dhcp script
+	* Fixed issues in install_initrd to handle multiple nics correctly.
+
+2005-12-19 makia
+	* Added a load_mod function to the install_initrd script so that the
+	  node will load all modules as needed (including dependencies).
+	* Updated pxelinux.0 to latest version from syslinux website.
+	* Added nfs?common to install_initrd to pick up nfs_acl if needed.
+	* Made changes to config_services to handle ranges in dhcp.
+	* Added a few lines to MAC.info to show new support.
+	* Tagged as gedi-0-4-1-8
+
+2005-12-14 makia
+	* Removed instances of DEFAULT_GATEWAY.
+	* Added some magic to copy_local_files in case someone else usees the
+	  fstab.net file like LLNL does.
+	* Changed copywrite to license in spec file.
+	* Changed texi2pdf to pdflatex in spec file.
+	* Tagged as gedi-0-4-1-7
+
+2005-12-12 makia
+	* No real changes, just wanted a real tag for testing.
+	* Tagged as gedi-0-4-1-4
+
+2005-12-09 makia
+	* Removed the dual-head and whatnot from the MAC_Collector script.
+	* Fixed options in the rpmdiff script so that you can supply
+	  rpmlist.<image> instead of "rpmlist.<image> <image>".
+	* Added /etc/hosts to local.conf since it was already called in
+	  rc.readonly.
+
+2005-12-07 makia
+	* Did some work with unionfs-1.1.1 and found the right incantation to
+	  make it work as expected (still questionable as to whether or not it's
+	  stable).
+	* Changed the variables file to use the new version of unionfs.
+	* Fixed checks in install_kernel to check for kernel with image type.
+	* Changes install_initrd to get rid of the unionfs patch (swear I did
+	  this before).
+	* Added unionfs binaries to install_initrd, they should be stored in
+	  /union/bin when the system is finally up and running.
+	* Tagged as gedi-0-4-1-3
+
+2005-12-07 makia
+	* More changes to the support scripts.
+	* modify_pxe now handles cases where expected and actual files differ.
+	* Changed linuxrc in the initrd to not require udevstart.
+	* Added patch for unionfs-1.0.14 to include the file fistdev.mk to
+	  strip debugging symbols.
+
+2005-12-07 makia
+	* Made some changes to the Make-rpm.mk file and the META file to handle
+	  the fact that gedi was taken and sourceforge thinks this is
+	  gedi-tools (even though I still want it to be gedi).
+	* Tagged as gedi-0-4-1-2
+
+2005-12-02 makia
+	* Added better use of /proc/cmdline (gedi-server changed for image in
+	  pxelinux.cfg file).
+	* Tagged as gedi-0-4-1-1.
+
+2005-12-01 makia
+	* Final changes to the config_services stuff... seems to work pretty
+	  well.
+	* Backing down to unionfs-1.0.14 so that testing can happen with these
+	  script changes.
+
+2005-11-29 makia
+	* Many, many changes in an attempt to better handle wierd cases in
+	  creating the dhcpd.conf file.
+	* Looking at making the unionfs work correctly.
+
+2005-11-28 makia
+	* updated to unionfs-1.1.1 (created patch)
+	* Split out dhcp and pxe creations in the tools directory.
+
+2005-11-23 makia
+	* Lots of changes to the way that dhcpd.conf and pxelinux.cfg is
+	  taken care of.
+	* Removed need to declare netmask in variables file.
+	* Removed need for dhclient (instead using IPAPPEND in pxelinux).
+	* Using groups instead of separate file's per ip address in pxelinux.
+	* Tagged as gedi-0-4-1-0
+
+2005-11-22 makia
+	* Minor tweaks after large system test.
+	* Made rc.readonly a config file in the spec file.
+	* Tagged as gedi-0-4-0-8
+
+2005-11-18 makia
+	* Minor changes to the variables file.
+	* Fixes for the install_kernel and install_initrd scripts.
+	* Added MODIFY_DHCP to the variables file and to the scripts that
+	  might use it.
+	* Updated the gedi documentation and removed the txt based version.
+	* Tagged as gedi-0-4-0-4
+
+2005-11-09 makia
+	* Moved everything to unionfs (simplifies most scripts).
+	* Added tags for modifying tftp config file
+	* Added unionfs-1.0.14.tar.gz
+
+2005-10-28 makia
+	* final changes for this rev.
+	* Tagged as gedi-0-3-0-1
+
+2005-10-27 makia
+	* A few more changes, add /etc/mail to the writable_files file.
+	* will now write fully qualified names to the hosts file via 
+	  config_services (sendmail)
+	* A number of changes to the install_initrd script to clean up some
+	  things (modules are now loaded via what's available in lspci).
+
+2005-10-24 makia
+	* changed the configure script to better handle the rc.diskless booting
+	  (it makes sure that the needed entry is in the inittab).
+
+2005-10-11 makia
+	* Lots of changes to the install_initrd and install_kernel scripts.
+	* Started removal of variablized binaries (stupid idea)
+	* added a little more logic for the perl scripts to stop complaining.
+	* Moved local file handling to separate script
+	* files in local directory are now controlled by a configuration file
+
+2005-10-10 makia
+	* Reworked the rpm spec file to make the rpm relocatable.
+	* Fixed post-install to update the variables file.
+	* Moved etc files to /etc/gedi
+	* Fixed scripts to source the correct variables file.
+	* Changed perl scripts to actually "source" the variables file.
+
+2005-06-20 makia
+	* In an effort to co-exist with YACI, moving all of the files and
+	  references to /usr/gedi
+	* Added a check to config_services to make sure that the server is
+	  correct in the pxelinux files.
+	* Removed devfs stuff, new RH uses UDEV (finally)
+	* Tagged as gedi-0-2-4-1
+
+2005-01-07 makia
+	* Added patching facility to the configure script.
+	* Moved the netfs script from local to a patch
+	* Tagged as gedi-0-2-3-9
+
+2005-01-06 makia
+	* Changes to the initrd script and inittab.  Now rc.diskless is run from
+	  inittab and then runs rc.sysinit (fixes dev umount issue).
+	* Tagged as gedi-0-2-3-8
+
+2004-12-28 makia
+	* Created a tex and pdf version of the document.
+	* (?)fixed the spec file to create a link of config_services to
+	  MAC_Update
+	* Tagged as gedi-0-2-3-7
+
+2004-12-15 makia
+	* Added umask setting, found that the permissions were screwy.
+	* Removed MAC_Update and pushed everything into config_services (where
+	  it should be).
+	* Changed install_initrd to use the images binaries rather than the
+	  servers.
+	* few other minor fixes.
+	* Tagged as gedi-0-2-3-2
+
+2004-12-14 makia
+	* Various fixes.  Removed XFS stuff.
+	* Tagged as gedi-0-2-3-0
+
+2004-12-01 makia
+	* fixed install_initrd to check if modules are available before trying
+	  to install them
+
+2004-11-15 makia
+	* more fixes
+	* Tagged as gedi-0-2-2-8
+
+2004-11-12 makia
+	* Lots of fixes.
+	* Created scripts to create an initrd and copy the kernel in place
+	* Tagged as gedi-0-2-2-7
+
+2004-11-11 makia
+	* Broken
+	* Tagged as gedi-0-2-2-5
+
+2004-11-10 makia
+	* Added an initrd that's built off of redhat's 2.4.21-20.EL kernel
+	* Future revisions will turn this into a script.
+	* Tagged as gedi-0-2-2-4
+
+2004-11-10 makia
+	* Loads of changes to just about everything.
+	* Tagged as gedi-0-2-2-3
+
+2004-09-08 makia
+	* Needed to add the documentation to the spec file...
+	* Tagged as gedi-0-2-2-2
+
+2004-09-08 makia
+	* Moved some of the local_mods back into the configure script (some
+	  things that need to happen by default).
+	* Wrote more documentation... hopefully done for a bit.
+	* Removed the required_rpms directory ... they're not really required
+	  anymore.
+	* Tagged as gedi-0-2-2-1
+
+2004-08-06 makia
+	* Moved fstab to a better place (local directory)
+	* fixed the configure script to not append files.
+	* removed post from gedi.spec
+	* created an examples directory, currently has the syslog files.
+	* Tagged as gedi-0-2-1-8
+
+2004-08-06 makia
+	* Had an issue with appending..
+	* Tagged as gedi-0-2-1-7
+
+2004-08-06 makia
+	* A few changes to fix some major bugs.
+	* Tagged as gedi-0-2-1-6
+
+2004-05-03 makia
+	* Fixed create_nfsroot to add in the --aid options as well as perform
+	  a PRE_RPM install.
+
+2004-04-30 makia
+	* Added a few more variables to the variables file.
+	* Overhauled the config_services script to add/delete/update as needed.
+
+2004-04-28 makia
+	* Moved graphics and rc.local to new gedi-llnl_mods along with other
+	  local customizations.
+	* Created a local_mods script.example which gives examples of how to
+	  customize.
+	* configure script has hook to run local_mods script.
+	* Removed the initscripts rpm, decided to just put them into local.
+
+2004-04-27 makia
+	* Moved rc.diskless and various changes to patched initscripts rpm.
+	* removed .diskless directory.
+	* added local_mods script and separated things out of configure script.
+	* Minor changes to various scripts.
+
+2004-04-26 makia
+	* Added headers for GPL release.
+	* moved variables to etc directory, updated related calls.
+
+2003-08-29 makia
+	* Added functions for removing and adding nodes to config_services.
+	* Tagged as gedi-0-2-1-3
+
+2003-08-28 makia
+	* A few errors in some scripts.
+	* Tagged as gedi-0-2-1-2
+
+2003-08-28 makia
+	* Prettied up the variables file and included variables for all system
+	  commands that are in use.
+	* Edited all of the bash scripts to use the new variables.
+	* Changed a few things to perl one-liners.
+	* Tagged as gedi-0-2-1-1
+
+2003-08-28 makia
+	* Renamed functions file to variables.
+	* Added some additional fixes from scripts that were in use.
+	* Added the nvidia XFree86 configs.
+	* Added the nvidia files to the spec file.
+	* Tagged as gedi-0-2-0-6
+
+2003-07-21 makia
+	* fixed config-services errors.
+	* Tagged as gedi-0-2-0-4
+
+2003-07-21 makia
+	* Added widescreen config
+	* Tagged as gedi-0-2-0-3
+
+2003-07-21 makia
+	* Updated the MAC utilities
+	* Tagged as gedi-0-2-0-2
+
+2003-04-30 makia
+	* Updated a number of files to fix some issues after the inital release.
+	* Tagged as gedi-0-2-0-1
+
+2003-03-06 makia
+	* Removed "Quick" install from create_nfsroot.
+	* Added arch check to update_rpmdir and update_rpmlist.
+
+2003-03-05 makia
+	* Added var/gdm to rc.diskless (for redhat 8.0 support).
+	* Removed hardware acceleration from the XF86Config-4 for ATI.
+	* Added the modprobing of the sound card into rc.local.
+	* Put code into configure script to clean out adverse KDE Screen Savers.
+	* Became a little less restrictive on naming in create_nfsroot.
+	* Have MAC_Collector and MAC_Update create a link from HEX address
+	  to hostname in /tftpboot/pxelinux.cfg.
+	* Minor fixes to rpmdiff, as well as adding ability to output commands.o
+	* Added options to update_rpmdir and update_rpmlist to handle different
+	  rpm locations.
+	* Tagged as gedi-0-1-1-3chaos
+
+2003-02-25 makia
+	* Updated update_rpmdir to handle newer packages a bit better.
+	* Updated update_rpmlist to allow a fullpath rpmlist.
+
+2003-02-24 makia
+	* Made some updates to MAC_Collector and MAC_Update to add more info to
+	  the pxelinux.cfg entries.
+	* Modified the tcpdump line to look for bootpc instead of broadcasts.
+	* Added /var/lib/nfs to the long list of linked files.
+	* Tagged as gedi-0-1-1-2gedi
+
+2003-01-31 makia
+	* Added handling of /var/{spool/{mail,mqueue},cache/man}.
+	* Added lastlog to rc.diskless.
+	* Cleaned up the XF86Config-4 handling in rc.diskless.
+	* Added "noreplace" to the local entries in the spec file.
+	* Tagged as gedi-0-1-1-1gedi
+
+2003-01-30 makia
+	* Created an rpmdiff script to make sure that the image and lists are
+	  synced up.
+
+2003-01-28 makia
+	* Updated the %etc%X11%XF86Config-4.ati to use the correct display
+	  driver.
+	* Added /etc/hosts to the functions file.
+	* Added some lines to put the node into the /etc/hosts file when
+	  config_services is run.
+	* Tagged as gedi-0-1-0-5gedi
+
+2003-01-28 makia
+	* Fixed MAC_Collector to work correctly after questioning whether or
+	  not to add the node.
+	* Changed spec file to treat everything in /tftpboot/local as config
+	  files.
+	* Tagged as gedi-0-1-0-4gedi
+
+2003-01-27 makia
+	* Fixed the exports part of config_services to actually add new lines.
+	* Fixed router to point to *.*.*.254
+	* Added ntp entries to rc.diskless.
+	* Changed syslog.conf example to send to #SERVER#.
+	* configure script will check if it needs to make directories as well
+	  as turn off/on some services and re-run newaliases as needed.
+	* Tagged as gedi-0-1-0-3gedi
+
+2003-01-27 makia
+	* Made config_services a little more better at handling new entries.
+	* Tagged as gedi-0-1-0-2gedi
+
+2003-01-27 makia
+	* Fixed config_services to handle more than one subnet.
+	* Fixed the MAC_* scripts to cut down on the prompting in pxelinux.cfg
+	  when booting.
+	* Added more ssh configurations to the configure script.
+	* Tagged as gedi-0-1-0-1gedi
+
+2003-01-23 makia
+	* Changed the handling of the exports file to be on a per-node basis.
+	* Fixed the server's xfs configuration to allow for remote connections.
+	* Tagged as gedi-0-0-1-9gedi
+
+2003-01-23 makia
+	* Added #SERVER# to XF86Config-4 files to allow the system to adjust
+	  correctly.
+	* Removed X config files for NVidia.
+	* Added hooks into configure script to handle the #SERVER# attribute.
+	* Removed the fstab.
+	* Added noclear to inittab.
+        * Tagged as gedi-0-0-1-8gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-7gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-6gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-5gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-4gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-3gedi
+
+2003-01-22 makia
+        * Tagged as gedi-0-0-1-2gedi
+
+2003-01-22 makia
+        * Initial release into CVS

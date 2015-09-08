@@ -1,0 +1,52 @@
+#!/bin/sh
+
+cat <<__END__
+#!/bin/sh
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+
+if [ -z "\$_GEDI_CLIENT_VARIABLES" ] ; then
+_GEDI_CLIENT_VARIABLES="loaded"
+
+umask 022
+
+__END__
+
+grep ^MOUNT_OPTIONS etc/variables
+grep ^BOOT_OPTIONS etc/variables
+grep ^SERIAL etc/variables
+grep ^HOST_PRE etc/variables
+
+echo
+grep ^UNIONFSVER etc/variables
+
+echo
+grep ^CLIENT_LIBDIR etc/variables | sed "s/CLIENT_//"
+grep ^UNIONDIR etc/variables
+grep ^BOOTDIR etc/variables
+grep ^PXEFILE etc/variables
+grep ^MSGFILE etc/variables
+
+echo
+echo "fi"

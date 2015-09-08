@@ -1,0 +1,1 @@
+gedi-1.0/gedi.spec

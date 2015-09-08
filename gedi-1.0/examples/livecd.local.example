@@ -1,0 +1,271 @@
+#!/bin/sh
+################################################################################
+# $Id: local_mods,v 1.32 2006/05/01 20:03:28 makia Exp $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Local changes to create a livecd.
+
+# Source variables
+. /etc/gedi/variables
+
+shift $(($OPTIND-1))
+if [ -n "$1" ] ; then
+   image=$1
+   if [ ! -d "$image/etc" ] ; then
+      echo "You must supply an image directory to work on."
+      exit
+   fi
+else
+   echo "You must supply an image directory to work on."
+   exit
+fi
+
+echo "Performing local modifications to image"
+
+echo "* Creating new ssh keys"
+echo -n "** Removing old keys"
+rm -f $image/etc/ssh/ssh_host_*key* && echo_success || echo_failure
+echo -n "** Creating RSA1 Key"
+/usr/bin/ssh-keygen -q -t rsa1 -f $image/etc/ssh/ssh_host_key \
+   -C '' -N '' >&/dev/null && echo_success || echo_failure
+echo -n "** Creating RSA Key"
+/usr/bin/ssh-keygen -q -t rsa -f $image/etc/ssh/ssh_host_rsa_key \
+   -C '' -N '' >&/dev/null && echo_success || echo_failure
+echo -n "** Creating DSA Key"
+/usr/bin/ssh-keygen -q -t dsa -f $image/etc/ssh/ssh_host_dsa_key \
+   -C '' -N '' >&/dev/null && echo_success || echo_failure
+chmod 600 $image/etc/ssh/ssh_host_*key
+chmod 644 $image/etc/ssh/ssh_host_*key.pub
+
+echo "* Clearing the passwd and group files"
+echo -n "** Removing users"
+for user in $(awk -F: '{if ($3 >= 800) print $1}' ${image}/etc/passwd) ; do
+   chroot ${image} userdel $user
+done && echo_success || echo_failure
+echo -n "** Removing groups"
+for group in $(awk -F: '{if ($3 >= 800) print $1}' ${image}/etc/group) ; do
+   chroot ${image} groupdel $group
+done && echo_success || echo_failure
+chroot ${image} groupadd -g 800 livecd
+echo -n "** Creating livecd user"
+chroot ${image} useradd -u 800 -g 800 -d /home/livecd -c "Generic LiveCD user" \
+                   -m livecd &&
+   echo_success || echo_failure
+echo "** Changing passwds"
+{
+   [ ! -f "${image}/etc/shadow" ] && chroot ${image} pwconv
+   echo "root" | chroot ${image} passwd --stdin root
+   echo "livecd" | chroot ${image} passwd --stdin livecd
+} && echo_success || echo_failure
+
+echo -n "* Fixing the hosts file"
+{
+   cat <<__END__ > ${image}/etc/hosts
+# Hosts file for the diag cluster
+127.0.0.1	localhost localhost.localdomain
+
+192.168.1.1	diag-host.localdomain diag-host diag-host-eth0
+10.0.0.1	diag-host-ib0
+
+# Remote Nodes
+__END__
+   for n in $(seq 2 255) ; do
+      node="diag$(($n-1))"
+      echo "192.168.1.$n	$node.localdomain $node $node-eth0" >> \
+         ${image}/etc/hosts
+   done
+   echo >> ${image}/etc/hosts
+   echo "# IB Connections" >> ${image}/etc/hosts
+   for n in $(seq 2 255) ; do
+      node="diag$(($n-1))"
+      echo "10.0.0.$n	$node-ib0" >> ${image}/etc/hosts
+   done
+} && echo_success || echo_failure
+
+echo -n "* Fixing the hosts.allow file"
+cat <<__END__ > ${image}/etc/hosts.allow
+ALL : 127.0.0.1 : ALLOW
+ALL : 192.168. : ALLOW
+ALL : 10.0. : ALLOW
+
+ALL : ALL@PARANOID : DENY
+ALL : ALL@ALL : DENY
+__END__
+[ $? ] && echo_success || echo_failure
+
+echo "* Setting up networking files"
+echo -n "** Creating network file"
+cat <<__END__ > ${image}/etc/sysconfig/network
+NETWORKING=yes
+HOSTNAME=diag-host
+__END__
+[ $? ] && echo_success || echo_failure
+echo -n "** Creating ifcfg files"
+rm -rf ${image}/etc/sysconfig/network-scripts/ifcfg-*
+cat <<__END__ > ${image}/etc/sysconfig/network-scripts/ifcfg-eth0
+DEVICE=eth0
+IPADDR=192.168.1.1
+NETMASK=255.255.0.0
+ONBOOT=yes
+__END__
+cat <<__END__ > ${image}/etc/sysconfig/network-scripts/ifcfg-lo
+DEVICE=lo
+IPADDR=127.0.0.1
+NETMASK=255.0.0.0
+NETWORK=127.0.0.0
+BROADCAST=127.255.255.255
+ONBOOT=yes
+NAME=loopback
+__END__
+[ $? ] && echo_success || echo_failure
+
+echo "* Making the livecd gedified"
+if [ ! -d ${image}/etc/gedi ] ; then
+   echo -n "** Creating directories"
+   {
+      [ ! -d ${image}/${ROOTDIR} ] && mkdir -p ${image}/${ROOTDIR}
+      [ ! -d ${image}/${IMAGE} ] && mkdir -p ${image}/${IMAGE}/diags
+      [ ! -d ${image}/${KERNDIR} ] && mkdir -p ${image}/${KERNDIR}
+      [ ! -d ${image}/${PXEDIR} ] && mkdir -p ${image}/${PXEDIR}
+   } && echo_success || echo_failure
+
+   echo -n "** Copying gedi files"
+   {
+      for gedi_dir in ${ETCDIR} ${PATCHDIR} ${SCRIPTDIR} ${TOOLSDIR} \
+                      ${LOCALDIR} ${SRCDIR} ; do
+         rsync -arz --delete ${gedi_dir}/ ${image}/${gedi_dir}
+      done
+      cp -a $ROOTDIR/pxelinux.0 ${image}/${ROOTDIR}
+   } && echo_success || echo_failure
+fi
+echo -n "** Performing minor housekeeping"
+{
+   rm -f ${image}/etc/dhcpd.conf
+   rm -f ${image}/${ETCDIR}/rpmlist*
+   cat <<__END__ > ${image}/${ETCDIR}/MAC.info
+192.168.1.2-192.168.1.255	diags
+__END__
+   rm -f ${image}/${LOCALDIR}/installed_set*
+   cat ${image}/${LOCALFILES} | grep -v "installed_set" > \
+      ${image}/${LOCALFILES}.bak
+   mv ${image}/${LOCALFILES}.bak ${image}/${LOCALFILES}
+} && echo_success || echo_failure
+
+echo "* Fixing NTP"
+rm ${image}/etc/ntp/step-tickers
+cat <<__END__ > ${image}/etc/ntp.conf
+server  127.127.1.0     # local clock
+fudge   127.127.1.0 stratum 10
+driftfile /var/lib/ntp/drift
+broadcastdelay  0.008
+broadcast 224.0.1.1     # broadcast to the multicast address.
+disable auth
+__END__
+[ $? ] && echo_success || echo_failure
+
+echo -n "* Rewriting rc.readonly"
+cat <<__END__ > ${image}/etc/rc.readonly
+# Set the path
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+
+IP=$(sed "s/ /\n/g" /proc/cmdline | grep ip=)
+if [ "\$IP" ] ; then
+   echo "Setting up network files"
+   echo "NETWORKING=yes" > /etc/sysconfig/network
+   echo "FORWARD_IPV4=no" >> /etc/sysconfig/network
+
+   if [ -f /etc/hosts ] ; then
+      HOSTNAME=\$(grep "\${IP/:*/}[[:space:]]" /etc/hosts | awk '{print \$2}')
+      HOSTNAME=\${HOSTNAME/.*/}
+      if [ "e" ] ; then
+         HOSTNAME=\$(echo \$HOSTNAME | sed 's/^e//')
+      fi
+
+      echo "HOSTNAME=\$HOSTNAME" >> /etc/sysconfig/network
+      hostname \$HOSTNAME
+   fi
+
+   cat <<_END_ > /etc/ntp.conf
+server  127.127.1.0     # local clock
+fudge   127.127.1.0 stratum 10
+driftfile /var/lib/ntp/drift
+broadcastdelay  0.008
+disable auth
+multicastclient
+_END_
+   cat <<_END_ > /etc/ntp/step-tickers
+192.168.1.1
+_END_
+else
+   /usr/gedi/tools/config_services
+fi
+__END__
+[ $? ] && echo_success || echo_failure
+
+echo -n "* Fixing fstab"
+cat <<__END__ > ${image}/etc/fstab
+unionfs		/		unionfs		defaults		0  0
+none		/dev/pts	devpts		gid=5,mode=620		0  0
+none		/proc		proc		defaults		0  0
+none		/dev/shm	tmpfs		defaults,size=100K	0  0
+none		/tmp		tmpfs		defaults		0  0
+
+/dev/cdrom	/mnt		iso9660		ro,defaults,noauto	0  0
+/mnt/image	/usr/gedi/nfsroot/diags	iso9660	bind,noauto		0  0
+__END__
+[ $? ] && echo_success || echo_failure
+
+echo -n "* Setting system to start diags automatically on tty1"
+{
+   awk '{ if (/^1:/) print $0" --loginprog /root/burn --autologin root --noissue --nohostname"; else print }' ${image}/etc/inittab > ${image}/etc/inittab.bak
+   mv ${image}/etc/inittab.bak ${image}/etc/inittab
+} && echo_success || echo_failure
+
+echo -n "* Creating burn startup script"
+{
+   cat <<__END__ > ${image}/root/burn
+#!/bin/sh
+[ -d /tmp/diags ] && rm -rf /tmp/diags
+pushd /var/diags/core
+./burn
+popd
+__END__
+   chmod 755 ${image}/root/burn
+} && echo_success || echo_failure
+
+echo -n "** Modifying rc.local"
+cat <<__END__ >> ${image}/etc/rc.d/rc.local
+IP=$(sed "s/ /\n/g" /proc/cmdline | grep ip=)
+if [ ! "$IP" ] ; then
+   mount /mnt
+   mount /usr/gedi/nfsroot/diags
+   /usr/gedi/tools/config_servies
+   exportfs 192.168.0.0/255.255.0.0:/usr/gedi/nfsroot/diags
+   cp -a /mnt/isolinux/vmlinuz /usr/gedi/kernel/vmlinuz-diags
+   cp -a /mnt/isolinux/initrd.gz /usr/gedi/kernel/initrd_gedi-diags.gz
+fi
+__END__
+[ $? ] && echo_success || echo_failure

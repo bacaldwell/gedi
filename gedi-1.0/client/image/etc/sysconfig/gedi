@@ -1,0 +1,64 @@
+#!/bin/sh
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+
+if [ -z "$_GEDI_CLIENT_VARIABLES" ] ; then
+_GEDI_CLIENT_VARIABLES="loaded"
+
+umask 022
+
+BOOT_OPTIONS="selinux=0 console=tty console=ttyS1,115200n8"
+SERIAL="115200"
+
+BOOTDIR="/boot"
+PXEFILE="${BOOTDIR}/pxe/pxelinux.cfg"
+MSGFILE="${BOOTDIR}/pxe/boot.msg"
+
+# DEBUG:
+#	Add additional drivers and tools to the initramfs to support
+#	debugging failed boots.
+#
+#DEBUG=yes
+
+# netdrivers:
+#	Only include the listed network driver modules in your initramfs;
+#	do not include the .ko suffix. This can dramatically reduce the size.
+#
+#netdrivers="your list here"
+#
+# For example:
+# netdrivers="bnx2 tg3 e1000e"
+
+# user_modules:
+# 	Add a space separated list of dracut modules to the initramfs
+#
+#user_modules="your list here"
+
+# user_drivers:
+#	Add a space separated list of kernel modules to the initramfs;
+#	do not include the .ko suffix
+#
+#user_drivers="your list here"
+
+fi

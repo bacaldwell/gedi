@@ -1,0 +1,156 @@
+################################################################################
+# $Id: variables 378 2006-12-18 14:58:16Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+
+# single load system
+if [ -z "$_GEDI_VARIABLES" ] ; then
+_GEDI_VARIABLES="loaded"
+
+#
+# Variables file used for creating and configuring images.
+umask 022
+
+########################## OPTIONS ###########################
+# Here are some options that you can configure to your liking.
+# Answer YES or NO where appropriate.
+
+# What version of unionfs?
+UNIONFSVER="1.1.5"
+
+# Options to pass to the mount line:
+# These will be options that are directly placed in the ramdisk for when the
+# client node performs a mount.
+MOUNT_OPTIONS="ro,nolock,actimeo=600,nocto"
+# The following controls what boot line will be used for your clients.
+# e.g. For serial redirection use: BOOT_OPTIONS="console=ttyS0,115200n8"
+BOOT_OPTIONS=""
+# If you need serial support for pxe, add the speed here.
+# e.g. SERIAL="115200"
+SERIAL=""
+
+# Would you like GeDI to modify your gedi_client.conf file?
+MODIFY_CLIENT_CONF="YES"
+
+# Would you like GeDI to modify some system files?
+MODIFY_DHCP="YES"
+MODIFY_EXPORTS="YES"
+MODIFY_HOSTS_FILE="YES"
+MODIFY_TFTP="YES"
+CLEAN_PXE_CFG="YES"
+
+# Some systems/clusters use hostname prefixs to separate the management network
+# from the other available networks.  If you'd like GeDI to use this network,
+# set the prefix here.
+HOST_PRE=""
+# Range of nodes that you'd like to export the images to (leave blank for per
+# node exports).
+# e.g. EXPORT_RANGE="192.168.48.0/255.255.248.0"
+EXPORT_RANGE=""
+
+# RPM stuff
+# Dont check signature on rpm (unset if older version of RPM)
+NOSIGNATURE="--nosignature"
+# Use rpm aid (unset for older version of RPM)
+AID="--aid"
+# Force install of rpms if not making rpm deps.
+FORCE="NO"
+
+# LOCATION OF GEDI DIRECTORIES AND FILES
+ROOTDIR="/usr/gedi"
+ETCDIR="/etc/gedi"
+RPMDIR="$ROOTDIR/RPMS"
+IMAGE="$ROOTDIR/nfsroot"
+MACINFO="$ETCDIR/MAC.info"
+LIBDIR="$ROOTDIR/lib"
+PATCHDIR="$ROOTDIR/patches"
+SCRIPTDIR="$ROOTDIR/scripts"
+SRCDIR="$ROOTDIR/src"
+TOOLSDIR="$ROOTDIR/tools"
+PERLDIR="$LIBDIR/perl"
+LOCALDIR="$ROOTDIR/local"
+LOCALFILES="$LOCALDIR/local.conf"
+UPDATEDIR="/usr/local/rpms"
+UPDATEEXCLUDE="$ETCDIR/update_exclude"
+CLIENT_CONF="/etc/sysconfig/gedi"
+
+# Client Specific Variables
+BOOTDIR="/boot"
+CLIENT_LIBDIR="/usr/lib/gedi"
+UNIONDIR="/usr/lib/unionfs"
+PXEFILE="${BOOTDIR}/pxe/pxelinux.cfg"
+MSGFILE="${BOOTDIR}/pxe/boot.msg"
+
+# LOCATION OF SYSTEM FILES
+DHCP="/etc/dhcpd.conf"
+EXPORTS="/etc/exports"
+HOSTS="/etc/hosts"
+TFTPCONF="/etc/xinetd.d/tftp"
+
+# Some stuff to make pretty output.
+RES_COL=60
+MOVE_TO_COL="echo -en \\033[${RES_COL}G"
+SETCOLOR_SUCCESS="echo -en \\033[1;32m"
+SETCOLOR_FAILURE="echo -en \\033[1;31m"
+SETCOLOR_NORMAL="echo -en \\033[0;39m"
+
+echo_success() {
+  $MOVE_TO_COL
+  echo -n "[  "
+  $SETCOLOR_SUCCESS
+  echo -n $"OK"
+  $SETCOLOR_NORMAL
+  echo -n "  ]"
+  echo -ne "\r\n"
+  return 0
+}
+
+echo_failure() {
+  $MOVE_TO_COL
+  echo -n "["
+  $SETCOLOR_FAILURE
+  echo -n $"FAILED"
+  $SETCOLOR_NORMAL
+  echo -n "]"
+  echo -ne "\r\n"
+  return 1
+}
+
+ip2hex()
+{
+   ip=$1
+
+   for i in $(echo $ip | tr '.' ' '); do
+      printf "%02x" $i
+   done | tr '[a-z]' '[A-Z]'
+}
+
+MODIFY_CLIENT_CONF=$(echo $MODIFY_CLIENT_CONF | tr [a-z] [A-Z])
+MODIFY_DHCP=$(echo $MODIFY_DHCP | tr [a-z] [A-Z])
+MODIFY_EXPORTS=$(echo $MODIFY_EXPORTS | tr [a-z] [A-Z])
+MODIFY_HOSTS_FILE=$(echo $MODIFY_HOSTS_FILE | tr [a-z] [A-Z])
+MODIFY_TFTP=$(echo $MODIFY_TFTP | tr [a-z] [A-Z])
+FORCE=$(echo $FORCE | tr [a-z] [A-Z])
+
+fi

@@ -1,0 +1,113 @@
+#!/bin/sh
+################################################################################
+# $Id: modify_other 348 2006-07-25 19:16:37Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Modify system services as needed
+
+# single load system
+if [ -z "$_SERVICES_VARIABLES" ] ; then
+_SERVICES_VARIABLES="loaded"
+
+# Source function library.
+. /etc/gedi/variables
+
+fix_tftp()
+{
+   if [ -f $TFTPCONF ] ; then
+      current_tftp_dir=$(grep server_args $TFTPCONF | sed "s/.*-s \(.*\)/\1/")
+      if [ "$ROOTDIR" != "$current_tftp_dir" ] ; then
+         echo -n "Modifying $TFTPCONF to match gedi installation"
+         sed -i "s,\(.*server_args[[:space:]]\+= \).*,\1-s ${ROOTDIR}," $TFTPCONF
+
+         new_tftp_dir=$(grep server_args $TFTPCONF | sed "s/.*-s \(.*\)/\1/")
+         [ "$ROOTDIR" = "$new_tftp_dir" ] &&  echo_success || echo_failure
+
+         echo -n "Restarting xinetd:"
+         service xinetd restart > /dev/null 2>&1 && echo_success || echo_failure
+      fi
+   fi
+}
+
+add_host_to_hosts()
+{
+   host=$1
+   ip=$2
+
+   if ( ! grep -q "^$ip" $HOSTS ) ; then
+      hostline="$ip	$host.$(hostname -d)	$host"
+      echo -n "** Adding $host to $HOSTS"
+      echo "$hostline" >> $HOSTS
+      grep -q "$hostline" $HOSTS && echo_success || echo_failure
+   fi
+}
+
+del_host_from_hosts()
+{
+   host=$1
+
+   hostline=$(grep "[[:blank:]]$host.$(hostname -d)" $HOSTS)
+
+   if [ -n "$hostline" ] ; then
+      echo -n "** Removing $host from $HOSTS"
+      sed -i "/${hostline}/d" $HOSTS
+      grep -q "$hostline" $HOSTS && echo_failure || echo_success
+   fi
+}
+
+add_host_to_exports()
+{
+   directory=$1
+   host=$2
+   ip=$3
+
+   if [ -z "$EXPORT_RANGE" ] ; then
+      exportline="$directory	$ip/25(ro,no_root_squash,async) # $host"
+   else
+      exportline="$directory	$EXPORT_RANGE(ro,no_root_squash,async)"
+   fi
+
+   if ( ! grep -q "$exportline" $EXPORTS ) ; then
+      echo -n "** Adding $host to $EXPORTS"
+      echo "$exportline" >> $EXPORTS
+      grep -q "$exportline" $EXPORTS && echo_success || echo_failure
+   fi
+}
+
+del_host_from_exports()
+{
+   host=$1
+
+   if [ -z "$EXPORT_RANGE" ] ; then
+      exportline=$(grep "# $host$" $EXPORTS | sed 's/\//\\\//g')
+      if [ -n "$exportline" ] ; then
+         echo -n "** Removing $host from $EXPORTS"
+         sed -i "/${exportline}/d" $EXPORTS
+         grep -q "$exportline" $EXPORTS && echo_failure || echo_success
+      fi
+   fi
+}
+
+fi

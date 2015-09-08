@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Copy the config that dracut did for us
+#
+echo "Propogating network config"
+{
+	echo "NETWORKING=yes"
+	echo "HOSTNAME=$(cat /proc/sys/kernel/hostname)"
+} > /etc/sysconfig/network

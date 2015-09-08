@@ -1,0 +1,117 @@
+#!/bin/sh
+################################################################################
+# $Id: copy_local_files 142 2006-04-13 18:32:15Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Configure the image to run in a diskless environment.
+
+# Source function library.
+. /etc/gedi/variables
+
+usage()
+{
+   echo "USAGE: $0 <nodetype>"
+}
+
+if [ $# -ne 1 ] || [ ! -d ${IMAGE}/$1 ]; then
+   usage
+   exit 1
+fi
+I=$1
+IMAGE=${IMAGE}/$1
+
+echo "Copying Local Configuration Files..."
+
+pushd ${LOCALDIR} > /dev/null 2>&1
+cat ${LOCALFILES} | grep -v "^#" |
+while read local_line ; do
+   [ -z "$local_line" ] && continue
+   local_line=( $(echo "$local_line" | sed 's,\*,\\*,') )
+
+   if [ -f ${local_line[0]} ] ; then
+      if [ ${#local_line[*]} -lt 6 ] ; then
+         filename=${local_line[0]}
+         destination=${local_line[1]}
+         mode=${local_line[2]}
+         user=${local_line[3]}
+         group=${local_line[4]}
+      else
+         filename=${local_line[0]}
+         image=${local_line[1]}
+         destination=${local_line[2]}
+         mode=${local_line[3]}
+         user=${local_line[4]}
+         group=${local_line[5]}
+
+         if [ "$image" != '\*' -a "$image" != "$I" ] ; then
+            continue
+         fi
+      fi
+
+      destname=$(basename $destination)
+      destdir=$(dirname $destination)
+
+      sed_line="s/#SERVER#/$HOSTNAME/ ; s!#IMAGE#!$IMAGE! ; s!#HOSTPRE#!$HOST_PRE!"
+
+      if [ ! -f ${IMAGE}/$destination ] ; then
+         echo "* Installing $filename into $destdir"
+         [ ! -d ${IMAGE}/$destdir ] && 
+            install -m 755 -o root -g root -d ${IMAGE}/$destdir
+         sed -e "$sed_line" $filename > \
+            ${IMAGE}/$destination
+      else
+         ( diff -q $filename ${IMAGE}/$destination > /dev/null 2>&1 ) && \
+            continue
+
+         if [ $destination = "/etc/fstab" ] ; then
+            for fs in $(cat $filename | grep -v '^#' | awk '{print $2}') ; do
+               if [ ! -d "${IMAGE}/$fs" ] ; then
+                  echo "** Creating $fs"
+                  install -m 755 -o root -g root -d ${IMAGE}/$fs
+               fi
+            done
+
+            if [ -f ${IMAGE}/etc/fstab.net ] ; then
+               (  head -$(cat $filename | wc -l) ${IMAGE}/etc/fstab |
+                  cmp -s - ${filename} ) && continue
+
+               rm ${IMAGE}/etc/fstab.net
+            fi
+         fi
+
+         if ( ! sed -e "$sed_line" $filename |
+                cmp -s - ${IMAGE}/${destination} ) ; then
+            echo "* Overwriting $destination"
+            sed -e "$sed_line" $filename > \
+               ${IMAGE}/$destination
+         fi
+      fi
+
+      chmod $mode ${IMAGE}/$destination
+      chown $user:$group ${IMAGE}/$destination
+   fi
+done
+popd > /dev/null 2>&1
+echo "DONE"

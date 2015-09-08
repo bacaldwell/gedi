@@ -1,0 +1,146 @@
+#!/usr/bin/perl
+################################################################################
+# $Id: update_rpmdir 72 2006-02-14 01:55:36Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Compare what RPMS are available to an update repository, keep only the newest.
+
+foreach (`. /etc/gedi/variables; set`)
+{
+   chomp;
+   next unless /^(.*?)=(.*)$/ and $1 ne "SHELLOPTS" ;
+   $ENV{$1} = $2;
+}
+
+$UPDATE_DIRECTORY = $ENV{"UPDATEDIR"};
+$RPMDIR           = $ENV{"RPMDIR"};
+$PERLDIR          = $ENV{"PERLDIR"};
+$BLACKLIST        = $ENV{"UPDATEEXCLUDE"};
+
+use Getopt::Std;
+use Cwd;
+use File::Basename;
+
+use constant GETOPTS_ARGS => "cr:u:h";
+use vars map { '$opt_' . $_ } split(/:*/, GETOPTS_ARGS);
+require "$PERLDIR/rpmperl.pm";
+
+rpmperl::init_blacklist($BLACKLIST);
+
+($prog = $0) =~ s/.*\/(.*?)$/$1/;
+
+my $usage = <<__END__;
+Usage: $prog [OPTIONS]
+
+Options:
+  -c       Copy files instead of create symlinks.
+  -r DIR   Set the RPM Repository. (Default=$RPM_REPOSITORY)
+  -u UDIR  Set the Update Directory. (Default=$UPDATE_DIRECTORY)
+__END__
+
+getopts(GETOPTS_ARGS);
+
+usage() if $opt_h;
+$copy = 1 if $opt_c;
+
+if ( $opt_r )
+{
+   $RPMDIR=$opt_r;
+   usage() unless -d $RPMDIR;
+}
+
+if ( $opt_u )
+{
+   if ( -d "./$opt_u" )
+   {
+      $UPDATE_DIRECTORY = getcwd() . "/$opt_u";
+   } else {
+      $UPDATE_DIRECTORY = $opt_u;
+   }
+
+   usage() unless -d $UPDATE_DIRECTORY;
+}
+
+mkdir $RPM_REPOSITORY if ! -d $RPM_REPOSITORY;
+
+sub find_rpms
+{
+   my($dir) = @_;
+   use vars qw/@list/;
+
+   opendir(DIR, "$dir") or die "Cannot open directory ($dir).  See -h for help.\n";
+   foreach ( sort readdir(DIR) )
+   {
+      next unless /\.rpm$/;
+      push(@list, "$dir/$_");
+   }
+   closedir(DIR);
+
+   return @list;
+}
+
+sub copy
+{
+   my($old, $new) = @_;
+
+   if ( $copy eq 1 )
+   {
+      link($old, $new);
+   } else {
+      symlink($old, $new);
+   }
+}
+
+foreach ( find_rpms("$RPMDIR") )
+{
+   if ( -l $_ )
+   {
+      (unlink $_ and next) unless -f readlink($_);
+   }
+
+   push(@old, $_);
+}
+@new = find_rpms("$UPDATE_DIRECTORY");
+
+foreach $new_rpm ( @new )
+{
+   $update = "$RPMDIR/" . basename($new_rpm);
+   next if -f $update;
+
+   $latest = rpmperl::latest_version($new_rpm, @old);
+   $head = (rpmperl::split_name($latest))[0];
+
+   if ( $latest eq -1 )
+   {
+      print "Updating " . basename($new_rpm) . ".\n";
+      copy($new_rpm, $update);
+   }
+}
+
+sub usage
+{
+   print $usage;
+   exit 1;
+}

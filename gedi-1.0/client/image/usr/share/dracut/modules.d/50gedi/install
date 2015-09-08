@@ -1,0 +1,15 @@
+#!/bin/bash
+# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
+# ex: ts=8 sw=4 sts=4 et filetype=sh
+
+inst "$moddir/nsswitch.conf" "/etc/nsswitch.conf"
+inst_hook cmdline 90 "$moddir/zz-gedi-default-root.sh"
+inst_hook pre-pivot 10 "$moddir/gedi-init.sh"
+
+# I don't think we need these, and they're 4MB. Check this on
+# a system with local disks to see if it causes an issue.
+#
+for i in ata_id create_floppy_devices edd_id scsi_id usb_id vol_id \
+        load_floppy_module.sh; do
+    inst "$moddir/placeholder" "/lib/udev/$i"
+done

@@ -1,0 +1,113 @@
+#!/bin/sh
+################################################################################
+# $Id: MAC_Collector 41 2006-01-11 01:00:29Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Collect MAC addresses by listening to boot requests.
+
+# Source function library.
+. /etc/gedi/variables
+
+umask 133
+
+if [ ! -f "$MACINFO" ] ; then
+   cat > $MACINFO << __EOF__
+# MAC.info created by $(basename $0) on $(date)
+#
+# MAC_ADDRESS		HOSTNAME	IP_ADDRESS	IMAGE
+__EOF__
+fi
+
+[ -f "/etc/sysconfig/dhcpd" ] && . /etc/sysconfig/dhcpd
+
+if [ -z "$DHCPDARGS" ] ; then
+   avail=( `ifconfig | grep HWaddr | awk '{print $1}'` )
+
+   if [ ${#avail[@]} == 1 ] ; then
+      device=$avail
+   else
+      echo "Which network device would you like to listen on?"
+      PS3="YOUR CHOICE ==> " 
+      select device in ${avail[*]} ; do
+         [ -n "$device" ] && break
+      done
+   fi
+fi
+
+echo "DEVICE=$device"
+
+# yesno needs the string to output and return 1 for no and 0 for yes.
+yesno()
+{
+   string=$1
+
+   while true ; do
+      echo -n "$string (yes or no) " && read answer
+      case "$answer" in 
+         yes|y)
+            return 0
+            ;;
+         no|n)
+            return 1
+            ;;
+      esac
+   done
+}
+
+cont=1
+while [ $cont == 1 ]
+do
+   while true ; do
+      echo "Listening for bootp request..."
+      MACADDR=`tcpdump -i $device -c 1 -entl port bootpc 2>/dev/null |
+               awk '{
+                            split($1, sep, ":")
+                            printf("%02s:%02s:%02s:%02s:%02s:%02s\n", sep[1], sep[2], sep[3], sep[4], sep[5], sep[6])
+                         }'`
+      if ( ! grep -q "$MACADDR" $MACINFO ) ; then
+         echo "Found $MACADDR:"
+         yesno "Add this node?" && break
+      else
+         echo "Node already in MAC.info.  Retrying."
+      fi
+   done
+
+   DUAL=''
+   echo -n "* Hostname? " && read HOSTNAME
+   echo -n "* IP Address? " && read IP
+   echo -n "* Image? " && read dIMAGE
+   IMAGEDIR="$IMAGE/$dIMAGE"
+
+   echo "$MACADDR	$HOSTNAME	$IP	$dIMAGE" >> $MACINFO
+
+   echo "Created an entry for $HOSTNAME:"
+   echo "* IP Address = $IP"
+   echo "* Image Directory = $IMAGEDIR"
+   echo ""
+
+   yesno "Would you like to add another host?" || cont=0
+done
+
+echo "Configuring Services" && $TOOLSDIR/config_services

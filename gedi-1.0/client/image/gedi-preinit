@@ -1,0 +1,36 @@
+#!/bin/sh
+
+PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PATH
+
+source /etc/gedi.d/functions
+
+echo "Running node configuration scripts"
+for script in /etc/gedi.d/*; do
+	[ -x "$script" ] || continue
+	echo "Running $script"
+	"$script"
+done
+
+# Find init, allowing override by kernel command line
+#
+cmdline=$(cat /proc/cmdline)
+if [ "x$cmdline" != "x${cmdline#*gedi.init=}" ]; then
+	cmdline_init="${cmdline#*gedi.init=}"
+	cmdline_init="${cmdline_init%% *}"
+fi
+
+for i in "$cmdline_init" /sbin/init /etc/init /init /bin/sh; do
+	[ -n "$i" ] || continue
+	[ -d "$i" ] || [ -L "$i" -o -x "$i" ] && { INIT="$i"; break; }
+done
+
+if [ -z "$INIT" ]; then
+	echo "Unable to locate init"
+	exit
+fi
+
+# Dracut already made a console, and pointed us at it, so just start init
+#
+echo "Starting real init"
+exec $INIT "$@"

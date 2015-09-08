@@ -1,0 +1,394 @@
+#!/usr/bin/perl
+################################################################################
+# $Id: rpmdiff 379 2006-12-18 17:00:52Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Compare the rpm's installed in an image to what is listed.
+
+foreach (`. /etc/gedi/variables; set`)
+{
+   chomp;
+   next unless /^(.*?)=(.*)$/ and $1 ne "SHELLOPTS" ;
+   $ENV{$1} = $2;
+}
+
+$ETCDIR=$ENV{"ETCDIR"};
+$IMAGEDIR=$ENV{"IMAGE"};
+$RPMDIR=$ENV{"RPMDIR"};
+$PERLDIR=$ENV{"PERLDIR"};
+
+use Getopt::Std;
+use File::Copy;
+
+use constant GETOPTS_ARGS => "gduh";
+use vars map { '$opt_' . $_ } split(/:*/, GETOPTS_ARGS);
+require "$PERLDIR/rpmperl.pm";
+
+($prog = $0) =~ s/.*\/(.*?)$/$1/;
+
+my $usage = <<__END__;
+Usage: $prog [-g] <rpmlist> <image directory>
+
+Options:
+  -l       Force the image to match <rpmlist> (default)
+  -u       Change the image and <rpmlist> to match versions.
+  -g       Go ahead and perform the image changes.
+  rpmlist  RPMList to use for comparison.
+  image    Name of the directory where the image is installed.
+
+This will point out any discrepancies between your rpmlist and your image.  
+By default, it will attempt to show what needs to be done to make your image
+(and your RPM repository) match what is in the rpmlist.  If you use the "-u"
+option, then any mismatches will be upgraded to the latest version that is
+available in your RPM repository (both the list and the image can be modified).
+
+Note: <image> can be ignored if you're rpmlist uses the standard GeDI
+      rpmlist.<image> format.
+__END__
+
+getopts(GETOPTS_ARGS);
+
+$debug = 1 if $opt_d;
+$make_changes = 1 if $opt_g;
+$upgrade = 1 if $opt_u;
+
+usage() and exit if $opt_h;
+
+# Some simple checks on the command line arguments.
+if ( $#ARGV < 0 ) { usage(); }
+elsif ( $#ARGV < 1 )
+{
+   if ( $ARGV[0] =~ m/^(.*?)\.(.*?)$/ )
+   {
+      # Looks like they gave us just the name of the rpmlist.
+      $LIST = $ARGV[0];
+      $ROOTDIR = $2;
+   }
+   elsif ( -f "$ETCDIR/rpmlist.$ARGV[0]" )
+   {
+      # Looks like they just supplied the image type.
+      $LIST = "rpmlist.$ARGV[0]";
+      $ROOTDIR = $ARGV[0];
+   }
+}
+else
+{
+   # Hey, we got both the rpmlist and the image type.
+   $LIST = $ARGV[0];
+   $ROOTDIR = $ARGV[1];
+}
+
+# We'll check that everything exists.
+if    ( -f "$LIST" )         { $RPMLIST = "$LIST"; }
+elsif ( -f "$ETCDIR/$LIST" ) { $RPMLIST = "$ETCDIR/$LIST"; }
+else                         { usage("You must specify a correct rpmlist."); }
+
+# And we need to check that the root filesystem is proper.
+if ( "$ROOTDIR" =~ /^\// and -d "$ROOTDIR" ) { $rootfs = $ROOTDIR; }
+elsif ( "$ROOTDIR" =~ /\.\./ )
+{ usage("Please use absolute paths for the image directory."); }
+else
+{
+   if ( -d "$IMAGEDIR/$ROOTDIR" ) { $rootfs = "$IMAGEDIR/$ROOTDIR"; }
+   else { usage("The image directory must exist."); }
+}
+
+# Put into memory a list of installed RPMS from the image.
+chomp(@rpms_installed = `/bin/rpm -r $rootfs -qa --queryformat "%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}.rpm\n" | sort`);
+
+# Put into memory a list of expected RPMS from the rpmlist.
+open (RLIST, "$RPMLIST") or die "Cannot open $RPMLIST.\n";
+chomp(@RLIST = <RLIST>);
+close (RLIST);
+
+# Put into memory a list of available RPMS from the repository.
+opendir(RPMDIR, "$RPMDIR") or die "Cannot opendir $RPMDIR.\n";
+foreach ( readdir(RPMDIR) )
+{
+   next unless /\.rpm$/;
+   push(@rpms_available, $_);
+}
+closedir(RPMDIR);
+
+sub missing
+{
+   my($type, @list) = @_;
+
+   if ( "$type" eq "list" )
+   {
+      push(@missing_list, "$rpm");
+      print "* Missing rpm from avail: $rpm\n" if $debug;
+   }
+   elsif ( "$type" eq "avail" )
+   {
+      push(@missing_avail, "$rpm");
+      print "* Missing rpm from list: $rpm\n" if $debug;
+   }
+   else
+   {
+      # The versions don't match, so we'll mark it for investigation.
+      print "* Mismatch rpm\n" if $debug;
+      push(@mismatch, ["$list[0]-$list[1]", "$list[2]-$list[3]"]);
+   }
+}
+
+sub compare_me
+{
+   my($a, $b, $type) = @_;
+
+   # Need to change some options if $a is the list or the image
+   if ( $type > 0 )
+   {
+      $missing_one = "list";
+      $missing_two = "avail";
+   }
+   else
+   {
+      $missing_one = "avail";
+      $missing_two = "list";
+   }
+
+   foreach $rpm (@$a)
+   {
+      print "====================\n" if $debug;
+      print "Working on \"$rpm\"\n" if $debug;
+
+      ($name, $vers, $arch) = rpmperl::split_name($rpm);
+      print "which is $name $vers $arch\n" if $debug;
+
+      if ( @b_list = ( rpmperl::rpm_matches($rpm, @$b) ) )
+      {
+         # We found at least one match in the installed list.
+         foreach $b_file ( @b_list )
+         {
+            ($iname, $ivers, $iarch) = rpmperl::split_name($b_file);
+            print "found version in TO list: $iname $ivers $iarch\n" if $debug;
+
+            if ( "$iname" eq -1 )
+            { missing($missing_one, "$rpm"); }
+            elsif ( "$iname-$ivers" ne "$name-$vers" )
+            { missing("mismatch", "$iname", "$ivers", "$name", "$vers"); }
+         }
+      }
+      else
+      { missing($missing_two, "$rpm"); }
+   }
+}
+
+# First loop compares what's in the list to what's in the image.
+print "Pass 1: Comparing the list to the image.\n";
+compare_me(\@RLIST, \@rpms_installed, 1);
+
+# Second loop compares what's in the image to what's in the list.
+print "Pass 2: Comparing the image to the list.\n";
+compare_me(\@rpms_installed, \@RLIST);
+
+# Print out the statistics.
+chomp($image = `/bin/basename $rootfs`);
+
+print "\n----------------- (STATISTICS) -----------------\n";
+print $#missing_list+1 . " packages are not installed in $image.\n";
+print $#missing_avail+1 . " packages are not in the rpmlist.\n";
+print $#mismatch+1 . " packages are mismatched.\n";
+
+if ( ! $make_changes and ($#missing_list >= 0 or
+                          $#missing_avail >= 0 or
+                          $#mismatch >= 0) )
+{ print "\nChanges will not happen unless you re-run with -g.\n"; }
+
+# Let's process the uninstalled list.
+if ($#missing_list >= 0)
+{
+   foreach $uninstalled (@missing_list)
+   {
+      if ( rpmperl::rpm_matches($uninstalled, @rpms_available) )
+      {
+         # If we match a file in the available repo, we'll mark it to be
+         # installed.
+         $uninstalled = $uninstalled . "*" unless $uninstalled =~ /(\.rpm|\*)$/;
+         push(@rpm_install, $uninstalled);
+      } else {
+         if ( $upgrade eq 1 )
+         {
+            # If not, we'll remove it from the rpmlist.
+            push(@list_remove, $uninstalled);
+         } else {
+            $uninstalled = $uninstalled . "*" unless
+               $uninstalled =~ /(\.rpm|\*)$/;
+            push(@add_to_repo, $uninstalled);
+         }
+      }
+   }
+}
+
+# Now, let's check what was installed that shouldn't be.
+if ($#missing_avail >= 0)
+{
+   foreach $missing (@missing_avail)
+   {
+      print "missing = $missing\n" if $debug;
+      if ( rpmperl::rpm_matches($missing, @rpms_available) and
+           $upgrade eq 1 )
+      {
+         # If it matches something in the repo, we'll add it to the rpmlist.
+         push(@list_add, $missing);
+      }
+      else
+      {
+         # If not, we'll remove it from the image.
+         push(@rpm_remove, (rpmperl::split_name($missing))[0]);
+      }
+   }
+}
+
+if ($#mismatch >= 0)
+{
+   foreach $mismatch ( @mismatch )
+   {
+      ($installed, $list) = @$mismatch;
+      print "Looking at availablity of $list\n";
+      if ( @avail = rpmperl::rpm_matches($installed, @rpms_available) )
+      {
+         # We found some options in the repo, so we'll figure out which one
+         # needs to change.
+         my ( $action ) = 0;
+         foreach $avail (@avail)
+         {
+            $avail = join("-", (rpmperl::split_name($avail))[0,1]);
+            if ( $avail eq $installed and $upgrade eq 1 )
+            {
+               # The available RPM is the same as the one installed, so let's
+               # change the list.
+               push(@list_remove, $list);
+               push(@list_add, $installed);
+               $action = 1;
+            }
+            elsif ( $avail eq $list )
+            {
+               # The available RPM is the same as the one from the list, so
+               # let's change the image.
+               $list = $list . "*" unless $list =~ /(\.rpm|\*)$/;
+               push(@rpm_install, $list);
+               $action = 1;
+            }
+         }
+
+         if ( ! $action )
+         {
+            $list = $list . "*" unless $list =~ /(\.rpm|\*)$/;
+            push(@add_to_repo, $list);
+         }
+      } 
+      elsif ( $upgrade eq 1 )
+      {
+         # No choices are available in the repo, so we'll get rid of it
+         # altogether.
+         push(@rpm_remove, $installed);
+         push(@list_remove, $list);
+      } else {
+         push(@add_to_repo, $list);
+      }
+   }
+}
+
+sub print_list { foreach ( @_ ) { print "* $_\n"; } }
+
+# First, we'll process changes to the rpmlist.
+$cond = ( $make_changes eq 1 ) ? "have been" : "should be";
+if (@list_remove or @list_add)
+{
+   if ( $make_changes eq 1 )
+   {
+      # Creating a temporary rpmlist...
+      open(OUT, ">/tmp/rpmlist.$image.new") or
+         die "Cannot write to /tmp/rpmlist.$image.new\n";
+   }
+
+   if ( @list_remove )
+   {
+      print "\nThese RPMS $cond removed from $RPMLIST:\n";
+      print_list @list_remove;
+
+      if ( $make_changes eq 1 )
+      {
+         # we'll print out what's in our current list, skipping the items that
+         # should be removed.
+         foreach $list (@RLIST)
+         { print OUT "$list\n" unless
+              rpmperl::rpm_matches($list, @list_remove); }
+      }
+   }
+   else
+   { foreach $list (@RLIST) { print OUT "$list\n"; } }
+
+   if ( @list_add )
+   {
+      print "\nThese RPMS $cond added to $RPMLIST:\n";
+      # When we're done with that, we'll tack on the new RPMS.
+      foreach $list ( @list_add )
+      {
+         print "* $list\n";
+         print OUT "$list\n" if $make_changes eq 1;
+      }
+   }
+
+   if ( $make_changes eq 1 )
+   {
+      close(OUT);
+      # Now, we'll just put the new list in place.
+      move("/tmp/rpmlist.$image.new", $RPMLIST);
+   }
+}
+
+# Second, we'll install the RPMS that need to be installed.
+if (@rpm_install)
+{
+   print "\nThese RPMS $cond installed/updated into the image:\n";
+   print_list @rpm_install;
+   system("cd $RPMDIR && rpm -r $rootfs -Uvh --oldpackage --aid @rpm_install\n")
+      if $make_changes eq 1;
+}
+
+# Lastly, we'll remove anything that needs to be removed.
+if (@rpm_remove)
+{
+   print "\nThese RPMS $cond removed from the image:\n";
+   print_list @rpm_remove;
+   system("rpm -r $rootfs -ev @rpm_remove") if $make_changes eq 1;
+}
+
+if ( @add_to_repo )
+{
+   print "\nThese RPMS need to be placed into $RPMDIR:\n";
+   print_list @add_to_repo;
+}
+
+sub usage
+{
+   my $extra_info = shift;
+   print $usage . "\n";
+   print $extra_info . "\n" if "$extra_info";
+   exit 1;
+}

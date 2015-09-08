@@ -1,0 +1,20 @@
+--- /etc/init.d/halt	2004-10-03 20:20:19.000000000 -0700
++++ %etc%init.d%halt	2006-02-27 12:45:18.000000000 -0800
+@@ -23,7 +23,7 @@
+ }
+ 
+ halt_get_remaining() {
+-	awk '$2 ~ /^\/$|^\/proc|^\/sys|^\/dev/{next}
++	awk '$2 ~ /^\/$|^\/proc|^\/sys|^\/dev|^\/union/{next}
+ 	     $3 == "tmpfs" || $3 == "proc" {print $2 ; next}
+ 	     /(^#|loopfs|autofs|devfs|^none|^\/dev\/ram|^\/dev\/root)/ {next}
+ 	     {print $2}' /proc/mounts
+@@ -206,7 +206,7 @@
+ 
+ # Remount read only anything that's left mounted.
+ # echo $"Remounting remaining filesystems readonly"
+-mount | awk '{ print $3 }' | while read line; do
++mount | awk '$5 != "unionfs" && $3 != "/" { print $3 }' | while read line; do
+     mount -n -o ro,remount $line
+ done
+ 

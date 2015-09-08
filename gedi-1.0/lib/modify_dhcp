@@ -1,0 +1,374 @@
+#!/bin/sh
+################################################################################
+# $Id: modify_dhcp 376 2006-12-16 02:59:23Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Modify the dhcpd.conf file.
+
+# single load system
+if [ -z "$_DHCPD_VARIABLES" ] ; then
+_DHCPD_VARIABLES="loaded"
+
+# Source function library.
+. /etc/gedi/variables
+
+get_net_and_mask()
+{
+   ip=$1
+
+   for dev in $(ifconfig -a | awk '/[[:space:]]Link/ {print $1}' | grep -v lo) ; do
+      dev_info=( $(ifconfig $dev | awk '/inet addr/ { gsub(/(Bcast|Mask):/, ""); print $3" "$4}') )
+      if [ -n "$dev_info" ] ; then
+         if [ $(ipcalc -b $ip ${dev_info[1]} | awk -F= '{print $NF}') = ${dev_info[0]} ] ; then
+            MASK="${dev_info[1]}"
+         fi
+      fi
+   done
+   NET=$(ipcalc --network $ip $MASK | awk -F= '{print $2}')
+
+   echo "$NET/$MASK"
+}
+
+write_global_options()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   if [ ! -f "$DHCP" ] ; then
+      echo -n "Creating blank $DHCP"
+      echo "# dhcpd.conf created by `basename $0` on `date`" > $DHCP
+      echo "#" >> $DHCP && echo_success || echo_failure
+   fi
+
+   # Global Options.
+   if ( ! grep -q ddns-update-style $DHCP ) ; then
+      echo -n "* Writing global options"
+      echo "ddns-update-style none;" >> $DHCP &&
+         echo_success || echo_failure
+   fi
+
+   if ( ! grep -q "option space pxelinux" $DHCP ) ; then
+      echo -n "* Writing global pxelinux options"
+      cat <<__END__ >> $DHCP
+
+option space pxelinux;
+option pxelinux.magic      code 208 = string;
+option pxelinux.configfile code 209 = text;
+option pxelinux.pathprefix code 210 = text;
+option pxelinux.reboottime code 211 = unsigned integer 32;
+
+site-option-space "pxelinux";
+option pxelinux.magic f1:00:74:7e;
+if exists dhcp-parameter-request-list {
+	option dhcp-parameter-request-list = concat(option dhcp-parameter-request-list,d0,d1,d2,d3);
+}
+option pxelinux.reboottime 30;
+
+__END__
+      grep -q "option space pxelinux" $DHCP && echo_success || echo_failure
+   fi
+
+   create_subnet local
+}
+
+create_shared_network()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   nic=$1
+   if ( ! grep -q "} \# end $nic" $DHCP ) ; then
+      echo -n "* Creating shared network for $nic: "
+      cat <<__END__ >> $DHCP
+
+shared-network $nic {
+	use-host-decl-names true;
+	option vendor-encapsulated-options 3c:09:45:74:68:65:72:62:6f:6f:74:ff;
+	
+} # end $nic
+__END__
+      echo_success
+   fi
+}
+
+# Setup the separate subnet sections.
+create_subnet()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   if [ "$1" = "local" ] ; then
+      for ipaddr in $(ifconfig -a | awk '/inet addr/ { gsub(/addr:/, ""); print $2}') ; do
+         ( echo $ipaddr | grep -q 127.0.0.1 ) && continue
+         netdev=(${netdev[*]} $(get_net_and_mask $ipaddr))
+      done
+   else
+      netdev="$1/$2"
+   fi
+
+   for n in ${netdev[*]} ; do
+      unset ip_router
+
+      subnet=${n/\/*/}
+      netmask=${n/*\//}
+
+      netstat_line=$(netstat -rn | grep "^${subnet}\b")
+
+      [ -z "${ip_router}" ] &&
+         ip_router=$(echo $netstat_line | awk '{print $2}')
+      ip_nic=$(echo $netstat_line | awk '{print $8}')
+      create_shared_network $ip_nic
+
+      [ "$ip_router" = "0.0.0.0" ] &&
+         ip_router=$(netstat -rn | grep "^0.0.0.0\b" | awk '{print $2}')
+
+      if [ -n "$ip_router" ] ; then
+         router="option routers		$ip_router;"
+      else
+         router="# option routers	;"
+      fi
+
+      HEADER="\tsubnet ${n/\/*/} netmask ${n/*\//} {\n\t\toption subnet-mask\t${n/*\//};\n\t\t$router\n\n\t} # end ${n}\n\n"
+      if ( ! grep -q "$n" $DHCP ) ; then
+         echo -n "* Creating $ip_nic entry for $n: "
+         sed -i -e "s,\(} # end $ip_nic\),${HEADER}\1," $DHCP
+         grep -q "$n" $DHCP &&
+            echo_success || echo_failure
+      fi
+   done
+}
+
+add_dhcp_pool()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   pool=$1
+   net=$2
+   mask=$3
+
+   create_subnet $net $mask
+
+   if ( ! grep -q "# end pool $pool" $DHCP ) ; then
+      echo -n "** Adding dhcp pool for $pool"
+      local prefix=$(basename ${IMAGE})/${pool}${BOOTDIR}
+
+      POOLENTRY="\t\tpool { # group=${pool}\n\t\t\tfilename \"${prefix}/pxe/pxelinux.0\";\n\t\t\toption root-path \"${IMAGE}/${pool}\";\n\t\t\toption pxelinux.pathprefix \"${prefix}/\";\n\t\t\toption pxelinux.configfile \"pxe/pxelinux.cfg\";\n\n\t\t} # end pool $pool\n\n"
+
+      sed -i -e "s,\([[:space:]]\+} # end $net/$mask\),${POOLENTRY}\1," $DHCP
+      grep -q "} # end pool $pool" $DHCP && echo_success || echo_success
+   fi
+}
+
+delete_dhcp_pool()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   pool=$1
+
+   if ( ! grep -q "range .* pool=$pool" $DHCP ) && 
+      ( grep -q "} # end pool $pool" $DHCP ) ; then
+      echo -n "** Removing dhcp pool $pool"
+      sed -i -e ":top
+              /pool {.*}/{
+              s/.*pool {.*} .*$pool\n\n//g
+              t top
+              }
+              /pool {/{
+              N
+              b top
+              }" $DHCP
+
+      grep -q "} # end pool $pool" $DHCP && echo_failure || echo_success
+   fi
+}
+
+add_dhcp_range()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   ip_range=$1
+   group=$2
+
+   ip_start=${ip_range/-*/}
+   ip_end=${ip_range/*-/}
+
+   add_dhcp_pool $group $(get_net_and_mask $ip_start | tr "/" " ")
+
+   if ( ! grep -q "range $ip_start $ip_end;" $DHCP ) ; then
+      echo -n "** Creating DHCP range for $range: "
+
+      RANGEENTRY="\t\t\trange $ip_start $ip_end; # pool=$group\n"
+
+      sed -i -e "s,\([[:space:]]\+} # end pool $group\),${RANGEENTRY}\1," $DHCP
+      grep -q "range $ip_start $ip_end;" $DHCP && echo_success || echo_failure
+   fi
+}
+
+delete_dhcp_range()
+{
+   range=$(echo $1 | sed "s/-/ /")
+
+   if ( grep -q "range $range;" $DHCP ) ; then
+      echo -n "** Remove DHCP range for $range: "
+      
+      sed -i "/.*range $range;.*/d" $DHCP
+      grep -q "range $range;" $DHCP && echo_failure || echo_success
+   fi
+}
+
+add_dhcp_group()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   group=$1
+   net=$2
+   mask=$3
+
+   create_subnet $net $mask
+
+   if ( ! grep -q "# end group $group" $DHCP ) ; then
+      echo -n "** Adding dhcp group for $group"
+
+      local prefix=$(basename ${IMAGE})/${group}${BOOTDIR}
+      GROUPENTRY="\t\tgroup { # group=${group}\n\t\t\tfilename \"${prefix}/pxe/pxelinux.0\";\n\t\t\toption root-path \"${IMAGE}/${group}\";\n\t\t\toption pxelinux.pathprefix \"${prefix}/\";\n\t\t\toption pxelinux.configfile \"pxe/pxelinux.cfg\";\n\n\t\t} # end group $group\n\n"
+
+      sed -i -e "s,\([[:space:]]\+} # end $net/$mask\),${GROUPENTRY}\1," $DHCP
+      grep -q "} # end group $group" $DHCP && echo_success || echo_success
+   fi
+}
+
+delete_dhcp_group()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   group=$1
+
+   if ( ! grep -q "host .* group=$group" $DHCP ) && 
+      ( grep -q "} # end group $group" $DHCP ) ; then
+      echo -n "** Removing dhcp group $group"
+      sed -i -e ":top
+              /group {.*}/{
+              s/.*group {.*} .*$group\n\n//g
+              t top
+              }
+              /group {/{
+              N
+              b top
+              }" $DHCP
+
+      grep -q "} # end group $group" $DHCP && echo_failure || echo_success
+   fi
+}
+
+add_dhcp_entry()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+
+   macaddress=$1
+   hostname=$2
+   ipaddress=$3
+   group=$4
+
+   add_dhcp_group $group $(get_net_and_mask $ipaddress | tr "/" " ")
+
+   if ( ! grep -q "host ${hostname} {" $DHCP ) ; then
+      echo -n "** Creating DHCP entry for $hostname: "
+
+      NODEENTRY="\t\t\thost ${hostname} { # group=${group}\n\t\t\t\thardware ethernet ${macaddress};\n\t\t\t\tfixed-address ${ipaddress};\n\t\t\t}\n\n"
+
+      sed -i -e "s,\([[:space:]]\+} # end group $group\),${NODEENTRY}\1," $DHCP
+      grep -q "host ${hostname} {" $DHCP && echo_success || echo_failure
+   fi
+}
+
+delete_dhcp_entry()
+{
+   [ "$MODIFY_DHCP" != "YES" ] && return
+   host=$1
+
+   echo -n "** Removing dhcp entry for $host"
+   sed -i -e ":top
+           /host $host {.*}/{
+           s/.*host .* {.*}\n\n//g
+           t top
+           }
+           /host $host {/{
+           N
+           b top
+           }" $DHCP
+   grep -q "host $host {" $DHCP && echo_failure || echo_success
+}
+
+check_entry_exists()
+{
+   host=$2
+   mac=$1
+   ip=$3
+   group=$4
+
+   host_check="$( awk -F"}\n" "/host ${host} / { print \$1 }" RS="" ${DHCP} )"
+   mac_check="$( awk -F"}\n" "/host.*${mac};/ { print \$1 }" RS="" ${DHCP} )"
+   ip_check="$( awk -F"}\n" "/host.*${ip};/ { print \$1 }" RS="" ${DHCP} )"
+   group_check="$( awk -F"}\n" "/host ${host}[[:space:]].*# group=${group}/ \
+                                { print \$1 }" RS="" ${DHCP} )"
+   actual_entry="			host ${host} { # group=${group}
+				hardware ethernet ${mac};
+				fixed-address ${ip};
+			}"
+
+   unset ih incorrect_hosts
+
+   # Three states of wrong ...
+   [ "$host_check" != "$mac_check" ] &&
+      ih=$(echo $mac_check | awk '{print $2}')
+   [ "$host_check" != "$ip_check" ]  &&
+      ih=( ${ih[@]} $(echo $ip_check | awk '{print $2}') )
+   [ "$host_check" != "$group_check" ]  &&
+      ih=( ${ih[@]} $(echo $group_check | awk '{print $2}') )
+   [ "$host_check" != "$actual_entry" ]  &&
+      ih=( ${ih[@]} $(echo $host_check | awk '{print $2}') )
+
+   [ "$mac_check" != "$ip_check" ] &&
+      ih=( ${ih[@]} $(echo $mac_check | awk '{print $2}') \
+                    $(echo $ip_check | awk '{print $2}') )
+   [ "$mac_check" != "$group_check" ] &&
+      ih=( ${ih[@]} $(echo $mac_check | awk '{print $2}') \
+                    $(echo $group_check | awk '{print $2}') )
+   [ "$mac_check" != "$actual_entry" ] &&
+      ih=( ${ih[@]} $(echo $mac_check | awk '{print $2}') )
+
+   [ "$ip_check" != "$group_check" ] &&
+      ih=( ${ih[@]} $(echo $ip_check | awk '{print $2}') \
+                    $(echo $group_check | awk '{print $2}') )
+   [ "$ip_check" != "$actual_entry" ] &&
+      ih=( ${ih[@]} $(echo $ip_check | awk '{print $2}') )
+
+   [ "$group_check" != "$actual_entry" ] &&
+      ih=( ${ih[@]} $(echo $group_check | awk '{print $2}') )
+
+   if [ -n "$ih" ] ; then
+      incorrect_hosts=$( for h in ${ih[@]} ; do echo $h ; done | sort | uniq )
+      echo ${incorrect_hosts[@]}
+   fi
+}
+
+fi

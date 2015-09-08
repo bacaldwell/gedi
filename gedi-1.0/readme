@@ -1,0 +1,26 @@
+This is a little bit of help on how to tag and build GeDI now that it is in
+SourceForge's subversion.  So, let's see what we can do:
+
+--TAGGING--
+This takes a few manual steps at the moment.  So, here goes:
+
+0) Edit the META file to update the version/revisions as needed and commit
+1) Create the tag with the create_tag script:
+
+./create_tag
+
+--CREATING RPMS--
+This should be pretty simple.  I recommend doing this from the actual tag
+directories because you're more likely to have a versioned RPM that actually
+matches the tag you used.  Once you think you know where you want to be, just
+type:
+
+make rpm
+
+Or, if you'd like a specific tag you can do:
+
+make rpm tag=<TAG>
+
+Or, if you'd like to make an rpm of the current trunk:
+
+make rpm tag=HEAD

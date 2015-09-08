@@ -1,0 +1,71 @@
+#!/bin/bash
+
+usage() {
+	[[ $@ ]] && echo -e "$@" 1>&2
+
+	cat 1>&2 <<EOF
+usage: $0 [OPTIONS] <initramfs> <kernel-version>
+Creates an initial ramdisk image for GeDI
+
+  -f, --force		Overwrite existing initramfs file
+  -d, --default 	Set this kernel version as the default boot version
+  -v, --verbose		Be verbose during initramfs generation
+  -h, --help		This message
+EOF
+	exit 2
+}
+
+while (($# > 0)); do
+	case ${1%%=*} in
+	-f|--force)	force=-f ;;
+	-d|--default)	set_default=yes ;;
+	-v|--verbose)	verbose=-v ;;
+	-h|--help)	usage ;;
+	-*)		usage "Unknown option: $1\n" ;;
+	*)		break ;;
+	esac
+	shift
+done
+
+[[ $# -ne 2 ]] && usage
+
+image="$1"
+kversion="$2"
+
+CONFIG_FILE=/etc/sysconfig/gedi
+[[ -r $CONFIG_FILE ]] && source $CONFIG_FILE
+
+RHEL_VERSION=$(lsb_release -rs | cut -f1 -d.)
+if [[ "$RHEL_VERSION" == "6" ]]; then
+  modules="dash rpmversion kernel-modules gedi nfs base"
+elif  [[ "$RHEL_VERSION" == "7" ]]; then
+  modules="bash gedi kernel-modules nfs base"
+fi
+drivers="none"
+
+[[ $DEBUG ]] && {
+        modules="$modules debug terminfo"
+        drivers="atkbd i8042 usbhid hid-apple ehci-hcd ohci-hcd uhci-hcd"
+}
+
+[[ $user_modules ]] && modules="$modules $user_modules"
+[[ $user_drivers ]] && drivers="$drivers $user_drivers"
+
+dracut -m "$modules" -d "$drivers" ${netdrivers+-n "$netdrivers"} --strip \
+	$force $verbose $image $kversion
+[[ $? -eq 0 ]] || {
+	echo "Failed to build image" 1>&2
+	exit 1
+}
+
+if [[ -e "$image" ]]; then
+  chmod 644 "$image"
+fi
+
+# XXX do this here?
+[[ $set_default  ]] && {
+	ln -s vmlinuz-${kversion} ${BOOTDIR}/vmlinuz
+	exit
+}
+
+exit 0

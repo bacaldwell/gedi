@@ -1,0 +1,96 @@
+#!/bin/sh
+################################################################################
+# $Id: configure 365 2006-08-11 19:22:18Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Configure the image to run in a diskless environment.
+
+# Source function library.
+. /etc/gedi/variables
+
+usage()
+{
+   echo "USAGE: $0 <nodetype>"
+}
+
+if [ $# -ne 1 ] || [ ! -d ${IMAGE}/$1 ]; then
+   usage
+   exit 1
+fi
+I=$1
+IMAGE=${IMAGE}/$1
+
+echo "Configuring ${IMAGE} to run in the GeDI environment."
+echo
+
+if [ "${MODIFY_CLIENT_CONF}" = "YES" ] ; then
+   echo "Making sure ${CLIENT_CONF} matches"
+   CLIENT_CONF=${IMAGE}/${CLIENT_CONF}
+
+   grep = ${CLIENT_CONF} | grep -v _GEDI_CLIENT |
+   while read var ; do
+      var_name=$(echo "$var" | awk -F= '{print $1}')
+      [ "${var_name}" = "UNIONDIR" ] && continue
+      [ "${var_name}" = "BOOTDIR" ] && continue
+      var=$(echo "$var" | sed "s|^[^=]*=||" | tr -d "\"")
+
+      if [ "$var_name" = "LIBDIR" ] ; then
+         LIBDIR=$(echo ${CLIENT_LIBDIR} | sed "s|CLIENT_||")
+         [ "${var}" != "${LIBDIR}" ] &&
+            sed -i "s|^\(${var_name}=\).*$|\1\"${LIBDIR}\"|" ${CLIENT_CONF}
+      else
+         act_var=$(grep ^${var_name} /etc/gedi/variables | sed "s|^[^=]*=||" | \
+                   tr -d "\"")
+
+         [ "${var}" != "$act_var" ] &&
+            sed -i "s|^\(${var_name}=\).*$|\1\"${act_var}\"|" ${CLIENT_CONF}
+      fi
+   done
+fi
+
+[ -x ${SCRIPTDIR}/copy_local_files ] &&
+   ${SCRIPTDIR}/copy_local_files ${I}
+
+for patchfile in ${PATCHDIR}/* ; do
+   fname=${IMAGE}$(grep '\-\-\-' $patchfile | awk '{print $2}')
+   pushd $(dirname $fname) > /dev/null
+   if ( patch --dry-run -N -i $patchfile > /dev/null 2>&1 ) ; then
+      patch -i $patchfile
+   fi
+   popd > /dev/null
+done
+
+if [ -f ${IMAGE}/etc/rc.d/rc6.d/*network ] ; then
+   echo "Removing network shutdown script"
+   rm -f ${IMAGE}/etc/rc.d/rc6.d/*network
+fi
+
+[ -x ${SCRIPTDIR}/local_mods ] &&
+   echo "Running local modifications..." &&
+   ${SCRIPTDIR}/local_mods ${I}
+
+[ -x ${SCRIPTDIR}/create_ramdisk ] &&
+   echo "Running create_ramdisk script..." &&
+   ${SCRIPTDIR}/create_ramdisk ${I}

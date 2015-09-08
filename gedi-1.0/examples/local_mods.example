@@ -1,0 +1,52 @@
+#!/bin/sh
+################################################################################
+# $Id: local_mods.example 379 2006-12-18 17:00:52Z makia $
+################################################################################
+#  Copyright (C) 2004 The Regents of the University of California.
+#  Produced at Lawrence Livermore National Laboratory (cf, DISCLAIMER).
+#  Written by Makia Minich <makia@llnl.gov>
+#  UCRL-CODE-155916
+#  
+#  This file is part of GeDI, a diskless image management tool.
+#  For details, see <http://www.llnl.gov/linux/gedi/>.
+#  
+#  GeDI is free software; you can redistribute it and/or modify it under
+#  the terms of the GNU General Public License as published by the Free
+#  Software Foundation; either version 2 of the License, or (at your option)
+#  any later version.
+#  
+#  GeDI is distributed in the hope that it will be useful, but WITHOUT ANY
+#  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+#  FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+#  details.
+#  
+#  You should have received a copy of the GNU General Public License along
+#  with GeDI; if not, write to the Free Software Foundation, Inc.,
+#  59 Temple Place, Suite 330, Boston, MA  02111-1307  USA.
+################################################################################
+#
+# Local changes to the image can be made here.
+
+. /etc/gedi/variables
+
+if [ $# -ne 1 ] || [ ! -d ${IMAGE}/$1 ] ; then
+   echo "No type specified."
+   exit 1
+fi
+IMAGE=${IMAGE}/$1
+
+# Add hosts files
+if ( ! cmp -s /etc/hosts ${IMAGE}/etc/hosts ) ; then
+   echo "Adding hosts file."
+   [ -f "/etc/hosts" ] && cp /etc/hosts ${IMAGE}/etc/
+fi
+
+# /tmp link.
+if [ ! -h "${IMAGE}/var/tmp" ] ; then
+   echo "Making a link from /tmp to /var/tmp."
+   rm -rf ${IMAGE}/var/tmp
+   ln -sf ../tmp ${IMAGE}/var/tmp
+fi
+
+echo "Setting up Roots files."
+rsync -a /root/.[A-Za-z]* ${IMAGE}/root/

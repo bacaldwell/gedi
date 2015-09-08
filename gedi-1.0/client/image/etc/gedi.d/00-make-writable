@@ -1,0 +1,8 @@
+#!/bin/sh
+
+source /etc/gedi.d/functions
+
+# /dev is already writable from dracut
+#
+make_writable /etc 100m
+make_writable /var

@@ -1,0 +1,11 @@
+#!/bin/bash
+# -*- mode: shell-script; indent-tabs-mode: nil; sh-basic-offset: 4; -*-
+# ex: ts=8 sw=4 sts=4 et filetype=sh
+
+# Be careful, since a bad initdir could break our system
+#
+if [ -n "$initdir" ] && [ "$initdir" != "/" ] ; then
+    # We don't need nss_ldap, because ldap kills us early in the boot
+    rm -f $initdir/lib*/libnss_ldap*
+    rm -f $initdir/lib*/libnss_nisplus*
+fi
